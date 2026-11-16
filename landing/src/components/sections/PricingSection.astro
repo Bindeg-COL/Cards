@@ -1,0 +1,1184 @@
+---
+/**
+ * PricingSection — sección "Precios" (L4k, decisión 007; diseno.md "Visual — L4k").
+ *
+ * "El selector que dibuja la tarjeta": a la izquierda, un radiogroup con los planes
+ * (L4m: el plan destacado en naranja; los demás en ámbar y salvia apagados) y una marca que se desliza al elegido; a la
+ * derecha, un panel con forma de pase (talón + cuerpo con muescas y perforación)
+ * que se redibuja con el plan activo. Textos de contenido/landing.md ("Precios").
+ * Sin CTA de piloto extra (regla 5 de diseno.md): los CTA son anclas existentes.
+ *
+ * Datos: src/data/pricing.ts (único archivo a tocar para publicar precios).
+ * - Con precio null: "Por definir con los primeros negocios", sin dígitos que ruedan
+ *   ni selector de periodo. Con cifra: dígitos que ruedan (420 ms) al entrar en
+ *   pantalla y al cambiar de plan o de periodo.
+ * - El selector Mensual / Anual solo existe si algún plan tiene priceAnnual.
+ * - Los stats con valor null no se publican; sin ninguno, el bloque no existe.
+ *
+ * Sin JS: no hay selector; los tres planes se ven como tarjetas completas.
+ * Con reduced motion: cambios instantáneos y precios sin animar.
+ * Rendimiento: solo transform y opacity (más el color registrado del acento);
+ * sin animaciones continuas.
+ *
+ * @param {string} id - id de la sección (ancla). El h2 usa `${id}-titulo`.
+ * @param {string} class - Clases extra para la sección.
+ */
+import { plans, formatCOP, PRICE_UNIT, type Plan } from '../../data/pricing';
+
+interface Props {
+  id?: string;
+  class?: string;
+}
+
+const { id = 'precios', class: className = '' } = Astro.props;
+const titleId = `${id}-titulo`;
+const uid = (s: string) => `${id}-${s}`;
+
+const initial = plans[0];
+const hasAnnual = plans.some((p) => p.priceAnnual !== null);
+// L4m: el plan destacado va en el naranja de marca (y su CTA también); los demás,
+// en secundarios apagados, con el CTA crema.
+const ACCENT_VAR = { naranja: 'var(--accent)', ambar: 'var(--accent-2)', salvia: 'var(--accent-3)' } as const;
+const accentVar = (p: Plan) => ACCENT_VAR[p.accent];
+const ctaVars = (p: Plan) =>
+  p.accent === 'naranja'
+    ? '--prc-cta-bg:var(--accent);--prc-cta-ink:var(--accent-ink)'
+    : '--prc-cta-bg:var(--c-text-1);--prc-cta-ink:var(--c-bg)';
+const pad = (n: number) => String(n).padStart(2, '0');
+
+// Valor que se ve sin JS (y al cargar): el mensual; si no hay, el anual.
+const shown = (p: Plan) =>
+  p.price !== null
+    ? { value: p.price, unit: PRICE_UNIT.month }
+    : p.priceAnnual !== null
+      ? { value: p.priceAnnual, unit: PRICE_UNIT.year }
+      : null;
+---
+
+<section
+  id={id}
+  class:list={['prc', className]}
+  aria-labelledby={titleId}
+  style={`--prc-accent:${accentVar(initial)}`}
+  data-prc
+>
+  <div class="prc__inner">
+    <div class="prc__grid">
+      <header class="prc__head">
+        <p class="prc__eyebrow">Precios</p>
+        <h2 id={titleId} class="prc__title">Planes simples, que crecen con tu negocio</h2>
+        <p class="prc__sub">
+          Los precios los estamos definiendo con los primeros negocios. Así pensamos los planes, según cuántas sedes y cajas manejas.
+        </p>
+      </header>
+
+      <!-- ===== Selector (solo con JS) ===== -->
+      <div class="prc__picker" data-prc-picker>
+        {hasAnnual && (
+          <div class="prc__period" role="radiogroup" aria-label="Periodo de facturación" data-prc-period>
+            <button type="button" role="radio" class="prc__period-btn" aria-checked="true" tabindex="0" disabled data-key="month">Mensual</button>
+            <button type="button" role="radio" class="prc__period-btn" aria-checked="false" tabindex="-1" disabled data-key="year">Anual</button>
+          </div>
+        )}
+        <div class="prc__opts" role="radiogroup" aria-labelledby={titleId} data-prc-opts>
+          <span class="prc__thumb" aria-hidden="true" data-prc-thumb></span>
+          {plans.map((p, i) => {
+            const s = shown(p);
+            return (
+              <button
+                type="button"
+                role="radio"
+                class="prc__opt"
+                aria-checked={i === 0 ? 'true' : 'false'}
+                tabindex={i === 0 ? 0 : -1}
+                disabled
+                style={`--prc-c:${accentVar(p)}`}
+                data-key={p.id}
+                data-accent={accentVar(p)}
+              >
+                <span class="prc__opt-dot" aria-hidden="true"></span>
+                <span class="prc__opt-main">
+                  <span class="prc__opt-name">
+                    {p.name}
+                    {p.badge && <span class="prc__badge">{p.badge}</span>}
+                  </span>
+                  <span class="prc__opt-for">{p.forWho}</span>
+                </span>
+                {s ? (
+                  <span class="prc__opt-price">
+                    <span class="prc-mono" data-prc-optamount>{formatCOP(s.value)}</span>
+                    <span class="prc__opt-unit" data-prc-optunit>{s.unit}</span>
+                  </span>
+                ) : (
+                  <span class="prc__opt-price prc__opt-price--tbd">Por definir</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <!-- ===== Pases: con JS uno visible a la vez; sin JS, los tres ===== -->
+      <div class="prc__stage" data-prc-stage>
+        <div class="prc__halo" aria-hidden="true"></div>
+        <div class="prc__passes">
+          {plans.map((p, i) => {
+            const s = shown(p);
+            const stats = p.stats.filter((st) => st.value !== null);
+            return (
+              <article
+                class="prc__pass"
+                style={`--prc-c:${accentVar(p)};${ctaVars(p)}`}
+                aria-labelledby={uid(`plan-${p.id}`)}
+                data-prc-pass={p.id}
+                data-name={p.name}
+                data-for={p.forWho}
+                data-count={p.features.length}
+                data-month={p.price ?? ''}
+                data-year={p.priceAnnual ?? ''}
+                data-active={i === 0 ? '' : undefined}
+              >
+                <div class="prc__stub">
+                  <span class="prc__ring prc__ring--l" aria-hidden="true"></span>
+                  <span class="prc__ring prc__ring--r" aria-hidden="true"></span>
+                  <div class="prc__pass-top">
+                    <span class="prc__idx prc-mono" aria-hidden="true">{pad(i + 1)} / {pad(plans.length)}</span>
+                    {p.badge && <span class="prc__badge">{p.badge}</span>}
+                  </div>
+                  <h3 id={uid(`plan-${p.id}`)} class="prc__name">{p.name}</h3>
+                  <p class="prc__for">{p.forWho}</p>
+
+                  <div class="prc__price">
+                    {s ? (
+                      <p class="prc__fig">
+                        <span class="prc__cur" aria-hidden="true">$</span>
+                        <span class="prc__amount prc-mono" aria-hidden="true" data-prc-amount>{formatCOP(s.value)}</span>
+                        <span class="prc__unit" aria-hidden="true" data-prc-unit>{s.unit}</span>
+                        <span class="prc-sr" data-prc-price-sr>{`${formatCOP(s.value)} ${s.unit}`}</span>
+                      </p>
+                    ) : (
+                      <p class="prc__tbd">
+                        <span class="prc__tbd-big">Por definir</span>{' '}
+                        <span class="prc__tbd-rest">con los primeros negocios</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div class="prc__body">
+                  <span class="prc__ring prc__ring--l prc__ring--top" aria-hidden="true"></span>
+                  <span class="prc__ring prc__ring--r prc__ring--top" aria-hidden="true"></span>
+                  {stats.length > 0 && (
+                    <dl class="prc__stats">
+                      {stats.map((st) => (
+                        <div>
+                          <dt>{st.label}</dt>
+                          <dd>{st.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  <p class="prc__inc">Incluye</p>
+                  <ul class="prc__feats" role="list">
+                    {p.features.map((f, k) => (
+                      <li class="prc__feat" style={`--i:${k}`}>
+                        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <a class="prc__cta" href={p.cta.href}>
+                    <span>{p.cta.label}</span>
+                    <span class="prc__cta-arrow" aria-hidden="true">→</span>
+                  </a>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      <!-- ===== Franja inferior ===== -->
+      <aside class="prc__band" aria-labelledby={uid('cadena')}>
+        <span class="prc__band-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" focusable="false">
+            <path d="M3.5 9.5L5 5h9l1.5 4.5M3.5 9.5h12M3.5 9.5v1a2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0v-1M4.75 12.25V19h4.5v-4h1.5v4h3.5v-6.75" />
+            <path d="M17.25 8.5h2.25l1 3v1a1.75 1.75 0 0 1-2.75 1.4M19.75 14.25V19H16" />
+          </svg>
+        </span>
+        <div class="prc__band-text">
+          <h3 id={uid('cadena')} class="prc__band-title">¿Varias sedes o una cadena?</h3>
+          <p>Cuéntanos cómo trabajas y lo armamos contigo. Aún estamos definiendo estos planes.</p>
+        </div>
+        <a class="prc__band-link" href="#piloto">
+          Contarnos mi caso
+          <span class="prc__band-arrow" aria-hidden="true">→</span>
+        </a>
+      </aside>
+    </div>
+
+    <p class="prc__note">
+      Todos los planes incluyen la tarjeta en Apple Wallet y Google Wallet, el escaneo desde el navegador y el panel del negocio. Los planes y precios son provisionales y pueden cambiar antes de abrir.
+    </p>
+  </div>
+
+  <p class="prc-sr" role="status" aria-live="polite" data-prc-live></p>
+</section>
+
+<script>
+  // Tiempos (ms): salida del plan, entrada y rueda de dígitos.
+  const OUT_MS = 140;
+  const IN_MS = 260;
+  const STAGGER_MS = 45;
+  const ROLL_MS = 420;
+  const UNIT = { month: 'COP / mes', year: 'COP / año' } as const;
+  const TBD = 'por definir con los primeros negocios';
+
+  type Period = keyof typeof UNIT;
+
+  const cop = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 });
+
+  const setup = (section: HTMLElement) => {
+    const q = <T extends Element = HTMLElement>(sel: string, root: ParentNode = section) => root.querySelector<T>(sel);
+    const qa = <T extends Element = HTMLElement>(sel: string, root: ParentNode = section) => Array.from(root.querySelectorAll<T>(sel));
+
+    const opts = q('[data-prc-opts]');
+    const thumb = q('[data-prc-thumb]');
+    const live = q('[data-prc-live]');
+    if (!opts || !thumb || !live) return;
+
+    const radios = qa<HTMLButtonElement>('[data-prc-opts] [role="radio"]');
+    const periodRadios = qa<HTMLButtonElement>('[data-prc-period] [role="radio"]');
+    const passes = qa('[data-prc-pass]');
+    const passOf = (key: string) => passes.find((p) => p.dataset.prcPass === key) ?? passes[0];
+    if (!radios.length || !passes.length) return;
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let current = radios.find((r) => r.getAttribute('aria-checked') === 'true')?.dataset.key ?? radios[0].dataset.key ?? '';
+    let period: Period = 'month';
+    let timers: number[] = [];
+    let seen = false;
+
+    const later = (fn: () => void, ms: number) => {
+      timers.push(window.setTimeout(fn, ms));
+    };
+    const cancelTimers = () => {
+      timers.forEach((t) => window.clearTimeout(t));
+      timers = [];
+    };
+
+    let liveTimer = 0;
+    const announce = (text: string) => {
+      // Vaciar y volver a escribir hace que se repita aunque el texto sea igual.
+      live.textContent = '';
+      window.clearTimeout(liveTimer);
+      liveTimer = window.setTimeout(() => {
+        live.textContent = text;
+      }, 60);
+    };
+
+    // ---- Precio del plan según el periodo ----
+    const priceOf = (el: HTMLElement): { value: number; unit: string } | null => {
+      const m = el.dataset.month ? Number(el.dataset.month) : null;
+      const y = el.dataset.year ? Number(el.dataset.year) : null;
+      if (period === 'year' && y !== null) return { value: y, unit: UNIT.year };
+      if (m !== null) return { value: m, unit: UNIT.month };
+      if (y !== null) return { value: y, unit: UNIT.year };
+      return null;
+    };
+
+    // ---- Dígitos que ruedan: cada dígito es una tira 0–9 que se desplaza ----
+    const digitsOf = (s: string) => s.replace(/\D/g, '');
+    const buildAmount = (el: HTMLElement, text: string, from: string | null, animate: boolean) => {
+      el.dataset.value = text;
+      if (!animate || reduce) {
+        el.replaceChildren(document.createTextNode(text));
+        return;
+      }
+      const to = digitsOf(text);
+      const prev = digitsOf(from ?? '');
+      let k = 0;
+      const strips: { strip: HTMLElement; d: string }[] = [];
+      const nodes: Node[] = [];
+      for (const ch of text) {
+        if (!/\d/.test(ch)) {
+          const sep = document.createElement('span');
+          sep.className = 'prc-dg-sep';
+          sep.textContent = ch;
+          nodes.push(sep);
+          continue;
+        }
+        const fromRight = to.length - 1 - k;
+        const start = prev[prev.length - 1 - fromRight] ?? '0';
+        k += 1;
+        const slot = document.createElement('span');
+        slot.className = 'prc-dg';
+        const strip = document.createElement('span');
+        strip.className = 'prc-dg__strip';
+        strip.style.setProperty('--d', start);
+        for (let n = 0; n <= 9; n++) {
+          const cell = document.createElement('span');
+          cell.textContent = String(n);
+          strip.append(cell);
+        }
+        slot.append(strip);
+        nodes.push(slot);
+        strips.push({ strip, d: ch });
+      }
+      el.replaceChildren(...nodes);
+      void el.offsetWidth; // fija la posición de partida antes de animar
+      requestAnimationFrame(() => {
+        strips.forEach(({ strip, d }) => strip.style.setProperty('--d', d));
+      });
+      later(() => {
+        if (el.dataset.value === text) el.replaceChildren(document.createTextNode(text));
+      }, ROLL_MS + 80);
+    };
+
+    const paintPrice = (pass: HTMLElement, opts: { animate: boolean; from?: string | null }) => {
+      const amount = q('[data-prc-amount]', pass);
+      const unit = q('[data-prc-unit]', pass);
+      const sr = q('[data-prc-price-sr]', pass);
+      const price = priceOf(pass);
+      if (!amount || !unit || !sr || !price) return;
+      const text = cop.format(price.value);
+      const from = opts.from === undefined ? amount.dataset.value ?? amount.textContent : opts.from;
+      buildAmount(amount, text, from, opts.animate);
+      unit.textContent = price.unit;
+      sr.textContent = `${text} ${price.unit}`;
+    };
+
+    const paintOptionPrices = () => {
+      radios.forEach((r) => {
+        const pass = passOf(r.dataset.key ?? '');
+        const price = priceOf(pass);
+        const a = q('[data-prc-optamount]', r);
+        const u = q('[data-prc-optunit]', r);
+        if (!price || !a || !u) return;
+        a.textContent = cop.format(price.value);
+        u.textContent = price.unit;
+      });
+    };
+
+    const priceText = (pass: HTMLElement) => {
+      const price = priceOf(pass);
+      return price ? `${cop.format(price.value)} ${price.unit}` : TBD;
+    };
+
+    // ---- Marca deslizante del selector ----
+    const moveThumb = () => {
+      const r = radios.find((x) => x.dataset.key === current);
+      if (!r) return;
+      thumb.style.setProperty('--tx', `${r.offsetLeft}px`);
+      thumb.style.setProperty('--ty', `${r.offsetTop}px`);
+      thumb.style.setProperty('--tw', `${r.offsetWidth}px`);
+      thumb.style.setProperty('--th', `${r.offsetHeight}px`);
+    };
+
+    // ---- Cambio de plan: salida 140 ms, entrada 260 ms con features escalonadas ----
+    const setActive = (pass: HTMLElement, on: boolean) => {
+      pass.toggleAttribute('data-active', on);
+      pass.inert = !on;
+    };
+
+    const select = (key: string, announceIt: boolean) => {
+      if (!key || key === current) return;
+      const prevPass = passOf(current);
+      const prevAmount = q('[data-prc-amount]', prevPass)?.dataset.value ?? null;
+      const prevHasPrice = priceOf(prevPass) !== null;
+      const next = passOf(key);
+      current = key;
+
+      radios.forEach((r) => {
+        const on = r.dataset.key === key;
+        r.setAttribute('aria-checked', on ? 'true' : 'false');
+        r.tabIndex = on ? 0 : -1;
+      });
+      const radio = radios.find((r) => r.dataset.key === key);
+      section.style.setProperty('--prc-accent', radio?.dataset.accent ?? '');
+      moveThumb();
+
+      cancelTimers();
+      const show = () => {
+        passes.forEach((p) => {
+          p.removeAttribute('data-leaving');
+          p.removeAttribute('data-entering');
+          setActive(p, p === next);
+        });
+        if (!reduce) {
+          void next.offsetWidth; // reinicia la animación de entrada
+          next.setAttribute('data-entering', '');
+          const count = Number(next.dataset.count) || 0;
+          later(() => next.removeAttribute('data-entering'), IN_MS + STAGGER_MS * count + 120);
+        }
+        paintPrice(next, { animate: true, from: prevHasPrice ? prevAmount : null });
+      };
+
+      if (reduce) show();
+      else {
+        passes.forEach((p) => p.removeAttribute('data-entering'));
+        if (prevPass !== next && prevPass.hasAttribute('data-active')) prevPass.setAttribute('data-leaving', '');
+        later(show, OUT_MS);
+      }
+
+      if (announceIt) {
+        const n = Number(next.dataset.count) || 0;
+        announce(`Plan ${next.dataset.name ?? ''}: ${next.dataset.for ?? ''}. Incluye ${n} cosas. Precio: ${priceText(next)}.`);
+      }
+    };
+
+    // ---- Radiogroups con roving tabindex (flechas, Home y End) ----
+    const radiogroup = (group: HTMLButtonElement[], pick: (key: string) => void) => {
+      const focusAt = (i: number) => {
+        const r = group[(i + group.length) % group.length];
+        r.focus();
+        pick(r.dataset.key ?? '');
+      };
+      group.forEach((r, i) => {
+        r.addEventListener('click', () => pick(r.dataset.key ?? ''));
+        r.addEventListener('keydown', (e) => {
+          const k = e.key;
+          if (k === 'ArrowRight' || k === 'ArrowDown') focusAt(i + 1);
+          else if (k === 'ArrowLeft' || k === 'ArrowUp') focusAt(i - 1);
+          else if (k === 'Home') focusAt(0);
+          else if (k === 'End') focusAt(group.length - 1);
+          else return;
+          e.preventDefault();
+        });
+      });
+    };
+
+    radiogroup(radios, (key) => select(key, true));
+
+    radiogroup(periodRadios, (key) => {
+      if ((key !== 'month' && key !== 'year') || key === period) return;
+      period = key;
+      periodRadios.forEach((r) => {
+        const on = r.dataset.key === key;
+        r.setAttribute('aria-checked', on ? 'true' : 'false');
+        r.tabIndex = on ? 0 : -1;
+      });
+      section.dataset.period = key;
+      paintOptionPrices();
+      paintPrice(passOf(current), { animate: true });
+      announce(`Mostrando precios ${key === 'year' ? 'anuales' : 'mensuales'}.`);
+    });
+
+    // ---- Arranque ----
+    section.dataset.js = '';
+    if (reduce) section.dataset.prcReduced = '';
+    [...radios, ...periodRadios].forEach((r) => {
+      r.disabled = false;
+    });
+    passes.forEach((p) => setActive(p, p.dataset.prcPass === current));
+    moveThumb();
+    // La marca entra sin deslizarse desde 0,0.
+    requestAnimationFrame(() => thumb.setAttribute('data-ready', ''));
+
+    // Al cambiar el tamaño, la marca se recoloca sin deslizarse.
+    let resizeFrame = 0;
+    const refit = () => {
+      thumb.removeAttribute('data-ready');
+      moveThumb();
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = requestAnimationFrame(() => thumb.setAttribute('data-ready', ''));
+      });
+    };
+    if ('ResizeObserver' in window) new ResizeObserver(refit).observe(opts);
+    else window.addEventListener('resize', refit);
+
+    // Dígitos de entrada: ruedan desde 0 la primera vez que la sección se ve.
+    const first = passOf(current);
+    if (priceOf(first) && !reduce && 'IntersectionObserver' in window) {
+      const amount = q('[data-prc-amount]', first);
+      if (amount) amount.replaceChildren(document.createTextNode((amount.textContent ?? '').replace(/\d/g, '0')));
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (seen || !entries.some((e) => e.isIntersecting)) return;
+          seen = true;
+          io.disconnect();
+          paintPrice(passOf(current), { animate: true, from: null });
+        },
+        { threshold: 0.35 },
+      );
+      io.observe(section);
+    }
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-prc]').forEach(setup);
+</script>
+
+<style>
+  /* El acento activo se interpola entre planes (marca, halo). */
+  @property --prc-accent {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: #ff6a3d;
+  }
+
+  .prc {
+    --prc-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --prc-surface: var(--c-surface-2);
+    position: relative;
+    overflow-x: clip;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(3rem, 6vw, 5rem) var(--sp-6, 1.5rem);
+    color: var(--c-text-1);
+    transition: --prc-accent 420ms ease;
+  }
+  .prc__inner {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  .prc-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .prc-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Grid (móvil primero) ---- */
+  .prc__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'picker'
+      'stage'
+      'band';
+  }
+  .prc__head { grid-area: head; }
+  .prc__picker { grid-area: picker; }
+  .prc__stage { grid-area: stage; }
+  .prc__band { grid-area: band; }
+  .prc:not([data-js]) .prc__picker { display: none; }
+
+  /* ---- Cabecera ---- */
+  .prc__eyebrow {
+    margin: 0 0 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .prc__title {
+    margin: 0;
+    font-size: clamp(1.75rem, 4.2vw, 2.75rem);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  .prc__sub {
+    max-width: 34rem;
+    margin: 1rem 0 0;
+    font-size: clamp(1rem, 1.6vw, 1.0625rem);
+    line-height: 1.6;
+    color: var(--c-text-2);
+    text-wrap: pretty;
+  }
+
+  /* ---- Selector ---- */
+  .prc__picker { margin-top: 2rem; }
+  .prc__period {
+    display: inline-flex;
+    margin: 0 0 0.875rem;
+    padding: 3px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-full, 999px);
+    background: var(--c-surface);
+  }
+  .prc__period-btn {
+    min-height: 36px;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: var(--r-full, 999px);
+    background: transparent;
+    color: var(--c-text-2);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  .prc__period-btn[aria-checked='true'] { background: var(--c-text-1); color: var(--c-bg); }
+
+  .prc__opts {
+    position: relative;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .prc__thumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    width: var(--tw, 0);
+    height: var(--th, 0);
+    border: 1px solid color-mix(in srgb, var(--prc-accent) 60%, transparent);
+    border-radius: 18px;
+    background:
+      radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--prc-accent) 16%, transparent), transparent 60%),
+      color-mix(in srgb, var(--prc-accent) 5%, transparent);
+    box-shadow: 0 18px 40px -24px color-mix(in srgb, var(--prc-accent) 70%, transparent);
+    transform: translate(var(--tx, 0), var(--ty, 0));
+    pointer-events: none;
+  }
+  .prc__thumb[data-ready] {
+    transition:
+      transform 380ms var(--prc-ease),
+      width 380ms var(--prc-ease),
+      height 380ms var(--prc-ease);
+  }
+
+  .prc__opt {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.875rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--c-border);
+    border-radius: 18px;
+    background: transparent;
+    color: var(--c-text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.25s ease, background-color 0.25s ease;
+  }
+  .prc__opt:hover { border-color: var(--c-border-strong); background: rgb(var(--ink-rgb) / 0.02); }
+  .prc__opt[aria-checked='true'] { border-color: transparent; background: transparent; }
+  .prc__opt-dot {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--c-text-3);
+    border-radius: 50%;
+    transition: border-color 0.25s ease;
+  }
+  .prc__opt-dot::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--prc-c);
+    transform: scale(0);
+    transition: transform 0.3s var(--prc-ease);
+  }
+  .prc__opt[aria-checked='true'] .prc__opt-dot { border-color: var(--prc-c); }
+  .prc__opt[aria-checked='true'] .prc__opt-dot::after { transform: scale(1); }
+  .prc__opt-main { display: grid; gap: 0.25rem; min-width: 0; }
+  .prc__opt-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.625rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .prc__opt-for {
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--c-text-2);
+  }
+  .prc__opt-price {
+    display: grid;
+    justify-items: end;
+    gap: 0.125rem;
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .prc__opt-unit { font-size: 0.6875rem; font-weight: 500; color: var(--c-text-3); }
+  .prc__opt-price--tbd {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--c-text-3);
+  }
+  .prc__opt:focus-visible,
+  .prc__period-btn:focus-visible,
+  .prc__cta:focus-visible,
+  .prc__band-link:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 3px;
+  }
+
+  .prc__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1875rem 0.5625rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-radius: var(--r-full, 999px);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  /* ---- Escenario del pase ---- */
+  .prc__stage {
+    position: relative;
+    isolation: isolate;
+    margin-top: 1.5rem;
+  }
+  .prc__halo {
+    position: absolute;
+    inset: -8% -14%;
+    z-index: -1;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--prc-accent) 20%, transparent), transparent);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .prc__passes {
+    display: grid;
+    gap: 1.25rem;
+  }
+  .prc[data-js] .prc__pass { grid-area: 1 / 1; }
+  .prc[data-js] .prc__pass:not([data-active]):not([data-leaving]) { visibility: hidden; }
+  .prc[data-js] .prc__pass[data-leaving] { animation: prc-out 140ms ease-in both; }
+  .prc[data-js] .prc__pass[data-entering] { animation: prc-in 260ms var(--prc-ease) both; }
+  .prc[data-js] .prc__pass[data-entering] .prc__feat {
+    animation: prc-feat 260ms var(--prc-ease) both;
+    animation-delay: calc(60ms + var(--i, 0) * 45ms);
+  }
+
+  /* El pase: talón + cuerpo, con muescas (máscara) y perforación. */
+  .prc__pass {
+    --prc-line: color-mix(in srgb, var(--prc-c) 34%, var(--c-border-strong));
+    --prc-notch: 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    filter: drop-shadow(0 40px 50px rgb(0 0 0 / 0.55));
+  }
+  .prc__stub,
+  .prc__body {
+    position: relative;
+    padding: 1.5rem 1.375rem;
+    border: 1px solid var(--prc-line);
+    background: var(--prc-surface);
+  }
+  .prc__stub {
+    overflow: hidden;
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    background:
+      radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--prc-c) 17%, transparent), transparent 62%),
+      var(--prc-surface);
+    -webkit-mask:
+      radial-gradient(circle at 0 100%, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+      radial-gradient(circle at 100% 100%, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 100% 0 / 51% 100% no-repeat;
+    mask:
+      radial-gradient(circle at 0 100%, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+      radial-gradient(circle at 100% 100%, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 100% 0 / 51% 100% no-repeat;
+  }
+  /* Filete de 2px del acento, que se apaga hacia las esquinas. */
+  .prc__stub::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: linear-gradient(90deg, transparent, var(--prc-c) 22%, var(--prc-c) 78%, transparent);
+    box-shadow: 0 0 18px 1px color-mix(in srgb, var(--prc-c) 55%, transparent);
+  }
+  /* Trama de puntos del talón (como el fondo de "Pruébalo"), estática. */
+  .prc__stub::after {
+    content: '';
+    position: absolute;
+    top: -30%;
+    right: -12%;
+    width: 62%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background-image: radial-gradient(circle, rgb(var(--ink-rgb) / 0.2) 1px, transparent 1.5px);
+    background-size: 13px 13px;
+    -webkit-mask-image: radial-gradient(closest-side, #000 20%, transparent 100%);
+    mask-image: radial-gradient(closest-side, #000 20%, transparent 100%);
+    pointer-events: none;
+  }
+  .prc__stub > :not(.prc__ring) { position: relative; z-index: 1; }
+
+  .prc__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-top: 0;
+    border-radius: 0 0 24px 24px;
+    -webkit-mask:
+      radial-gradient(circle at 0 0, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+      radial-gradient(circle at 100% 0, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 100% 0 / 51% 100% no-repeat;
+    mask:
+      radial-gradient(circle at 0 0, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 0 0 / 51% 100% no-repeat,
+      radial-gradient(circle at 100% 0, #0000 var(--prc-notch), #000 calc(var(--prc-notch) + 0.5px)) 100% 0 / 51% 100% no-repeat;
+  }
+  /* Perforación entre las muescas. */
+  .prc__body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(var(--prc-notch) + 8px);
+    right: calc(var(--prc-notch) + 8px);
+    border-top: 1.5px dashed var(--prc-line);
+  }
+  /* Contorno de cada muesca (la máscara recorta la mitad de fuera). */
+  .prc__ring {
+    position: absolute;
+    bottom: calc(-1 * var(--prc-notch) - 1px);
+    width: calc(2 * var(--prc-notch) + 2px);
+    height: calc(2 * var(--prc-notch) + 2px);
+    border: 1px solid var(--prc-line);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .prc__ring--top { top: calc(-1 * var(--prc-notch) - 1px); bottom: auto; }
+  .prc__ring--l { left: calc(-1 * var(--prc-notch) - 2px); }
+  .prc__ring--r { right: calc(-1 * var(--prc-notch) - 2px); }
+
+  .prc__pass-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 24px;
+  }
+  .prc__idx {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--c-text-3);
+  }
+  .prc__name {
+    margin: 1.25rem 0 0;
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+  .prc__for {
+    margin: 0.5rem 0 0;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    color: var(--c-text-2);
+  }
+
+  /* Precio: cifra gigante en mono, o "Por definir" con la misma jerarquía. */
+  .prc__price { margin-top: 1.75rem; padding-bottom: 0.5rem; }
+  .prc__fig,
+  .prc__tbd { margin: 0; }
+  .prc__fig {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.375rem;
+  }
+  .prc__cur {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--c-text-2);
+  }
+  .prc__amount {
+    display: inline-flex;
+    font-size: clamp(2.75rem, 6vw, 4rem);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+  .prc__unit {
+    font-size: 0.875rem;
+    color: var(--c-text-2);
+  }
+  .prc__tbd-big {
+    display: block;
+    font-size: clamp(2.5rem, 5.5vw, 3.75rem);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--c-text-2);
+  }
+  .prc__tbd-rest {
+    display: block;
+    margin-top: 0.625rem;
+    font-size: 0.9375rem;
+    color: var(--c-text-2);
+  }
+
+  /* Dígitos que ruedan (solo con cifra). */
+  .prc__amount :global(.prc-dg) {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+  }
+  .prc__amount :global(.prc-dg__strip) {
+    display: flex;
+    flex-direction: column;
+    transform: translateY(calc(var(--d, 0) * -10%));
+    transition: transform 420ms var(--prc-ease);
+  }
+  .prc__amount :global(.prc-dg__strip > span) { height: 1em; line-height: 1; }
+
+  .prc__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+    gap: 0.75rem 1rem;
+    margin: 0.5rem 0 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .prc__stats dt { font-size: 0.75rem; color: var(--c-text-3); }
+  .prc__stats dd { margin: 0.25rem 0 0; font-size: 0.9375rem; font-weight: 500; }
+
+  .prc__inc {
+    margin: 0.75rem 0 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-2);
+  }
+  .prc__feats {
+    display: grid;
+    gap: 0.75rem 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .prc__feat {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+  .prc__feat svg {
+    margin-top: 0.125rem;
+    padding: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--prc-c) 16%, transparent);
+    fill: none;
+    stroke: var(--prc-c);
+    stroke-width: 2.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .prc__cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    width: 100%;
+    min-height: 52px;
+    margin-top: auto;
+    padding: 0 1.375rem;
+    border-radius: 14px;
+    background: var(--prc-cta-bg, var(--c-text-1));
+    color: var(--prc-cta-ink, var(--c-bg));
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.25s ease;
+  }
+  .prc__feats + .prc__cta { margin-top: max(1.75rem, auto); }
+  .prc__body > .prc__feats { margin-bottom: 1.75rem; }
+  .prc__cta:hover { box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--prc-c) 80%, transparent); }
+  .prc__cta:active { transform: scale(0.98); }
+  .prc__cta-arrow { transition: transform 0.25s var(--prc-ease); }
+  .prc__cta:hover .prc__cta-arrow { transform: translateX(3px); }
+
+  /* ---- Franja "¿Varias sedes o una cadena?" ---- */
+  .prc__band {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 1rem 1rem;
+    align-items: start;
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid var(--c-border);
+    border-radius: 20px;
+    background: rgb(var(--ink-rgb) / 0.025);
+  }
+  .prc__band-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid color-mix(in srgb, var(--accent-3) 35%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent-3) 10%, transparent);
+  }
+  .prc__band-icon svg {
+    fill: none;
+    stroke: var(--accent-3);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .prc__band-title {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .prc__band-text p {
+    margin: 0.375rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--c-text-2);
+    text-wrap: pretty;
+  }
+  .prc__band-link {
+    grid-column: 2;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    margin-top: -0.5rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--c-text-1);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--accent-3) 60%, transparent);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 5px;
+    border-radius: 6px;
+    transition: text-decoration-color 0.2s ease;
+  }
+  .prc__band-link:hover { text-decoration-color: var(--accent-3); }
+  .prc__band-arrow { transition: transform 0.25s var(--prc-ease); }
+  .prc__band-link:hover .prc__band-arrow { transform: translateX(3px); }
+
+  .prc__note {
+    max-width: 52rem;
+    margin: 1.75rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--c-text-3);
+  }
+
+  @keyframes prc-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateY(-6px); }
+  }
+  @keyframes prc-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes prc-feat {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* ---- ≥640: tabs-radio horizontales; features en 2 columnas ---- */
+  @media (min-width: 640px) {
+    .prc__opts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .prc__opt {
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      align-items: start;
+      row-gap: 0.75rem;
+      padding: 1rem;
+    }
+    .prc__opt-dot { margin-top: 0.1875rem; }
+    .prc__opt-for { display: none; }
+    .prc__opt-price { grid-column: 2; justify-items: start; }
+    .prc__stub,
+    .prc__body { padding: 1.75rem 2rem; }
+    .prc__feats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .prc__cta { width: auto; align-self: flex-start; }
+    .prc__band {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      padding: 1.25rem 1.5rem;
+    }
+    .prc__band-link { grid-column: auto; margin-top: 0; }
+    .prc:not([data-js]) .prc__passes { gap: 1.5rem; }
+  }
+
+  /* ---- ≥1024: grid 5/7, selector en filas a la izquierda y pase a la derecha ---- */
+  @media (min-width: 1024px) {
+    .prc[data-js] .prc__grid {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas:
+        'head stage'
+        'picker stage'
+        'band stage';
+      column-gap: clamp(2.5rem, 5vw, 4.5rem);
+    }
+    .prc[data-js] .prc__stage {
+      align-self: center;
+      margin-top: 0;
+    }
+    .prc[data-js] .prc__band { align-self: start; }
+    .prc__opts { grid-template-columns: minmax(0, 1fr); }
+    .prc__opt {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-rows: auto;
+      align-items: center;
+      padding: 1.125rem 1.25rem;
+    }
+    .prc__opt-dot { margin-top: 0; }
+    .prc__opt-for { display: block; }
+    .prc__opt-price { grid-column: auto; justify-items: end; }
+    .prc[data-js] .prc__band {
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
+    }
+    .prc[data-js] .prc__band-link { grid-column: 2; margin-top: -0.5rem; }
+    /* Sin JS: las tres tarjetas una al lado de la otra. */
+    .prc:not([data-js]) .prc__passes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .prc:not([data-js]) .prc__feats { grid-template-columns: minmax(0, 1fr); }
+    .prc:not([data-js]) .prc__stub,
+    .prc:not([data-js]) .prc__body { padding: 1.5rem; }
+    .prc:not([data-js]) .prc__cta { width: 100%; }
+    .prc__halo { inset: -18% -16%; opacity: 0.8; }
+  }
+
+  /* ---- ≥1280: contenedor 1280 y pase más amplio ---- */
+  @media (min-width: 1280px) {
+    .prc__inner { max-width: 1280px; }
+    .prc[data-js] .prc__grid { grid-template-columns: minmax(0, 460px) minmax(0, 1fr); column-gap: 5rem; }
+    .prc__stub,
+    .prc__body { padding: 2rem 2.5rem; }
+    .prc__halo { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .prc,
+    .prc *,
+    .prc *::before,
+    .prc *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+</style>

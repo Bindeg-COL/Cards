@@ -1,0 +1,470 @@
+---
+/**
+ * ProblemSection — sección "El problema" (L4d, decisión 004; interacción en L4e;
+ * formato editorial en L4g, diseno.md "Visual — L4g", opción A).
+ *
+ * Frase de entrada + palabra gigante que se derrite entre valores (MeltWord) y,
+ * debajo, una columna editorial por palabra (sin caja): título y problema siempre
+ * visibles; "Con Loyalty" solo en la columna activa. Textos de contenido/landing.md.
+ *
+ * Interacción (script al final, habla con MeltWord por eventos DOM):
+ * - Hover (puntero no táctil) o foco de teclado en una columna: la palabra se
+ *   derrite hacia la de esa columna, toma su color y la columna se activa con el
+ *   relleno de la línea al 100%. Al salir, el bucle se reanuda tras RESUME_MS.
+ * - Clic o toque: fija la selección (aria-pressed) hasta otro clic en la misma
+ *   columna, en otra, fuera de las columnas o Escape.
+ * - Sin interacción: el bucle sigue y se activa sola la columna de la palabra
+ *   visible; su línea se rellena 0→100% durante el reposo de MeltWord (data-hold,
+ *   fijado en --ps-hold). El relleno arranca con cada `meltword:change`.
+ * - Sin JS: se ven todas las soluciones (las oculta solo `.ps[data-js]`).
+ *
+ * Accesibilidad: el nombre de cada botón incluye título, problema y "Con Loyalty: …"
+ * (span sr-only); la solución visible y su copia fantasma van aria-hidden.
+ *
+ * @param {string} id - id de la sección (ancla). El h2 usa `${id}-titulo`.
+ * @param {string} class - Clases extra para la sección.
+ */
+import MeltWord from '../ui/MeltWord.astro';
+
+interface Props {
+  id?: string;
+  class?: string;
+}
+
+const { id = 'problema', class: className = '' } = Astro.props;
+const titleId = `${id}-titulo`;
+
+const cards = [
+  {
+    word: 'Otra app',
+    accent: 'var(--accent)',
+    problem: 'A tus clientes no les gusta bajar otra app solo para sumar puntos en una compra pequeña.',
+    solution: 'Tu cliente guarda la tarjeta en la billetera de su celular y no tiene que instalar nada.',
+  },
+  {
+    word: 'Lento',
+    accent: 'var(--accent-2)',
+    problem: 'Sellar tarjetas o buscar al cliente en una libreta hace que la fila se alargue.',
+    solution: 'Escaneas el QR del pase desde el navegador y sumas los puntos de esa compra.',
+  },
+  {
+    word: 'En papel',
+    accent: 'var(--accent-4)',
+    problem: 'La tarjeta de sellos de cartón se moja, se pierde o se queda olvidada en casa.',
+    solution: 'La tarjeta vive en la billetera del celular, que tu cliente casi siempre lleva encima.',
+  },
+  {
+    word: 'Olvidable',
+    accent: 'var(--accent-3)',
+    problem: 'Tu cliente no sabe cuántos puntos lleva ni qué le falta para su premio, y deja de volver.',
+    solution: 'El saldo se actualiza en el pase y tu cliente lo ve al abrir su billetera del celular.',
+  },
+  {
+    word: 'Invisible',
+    accent: 'var(--accent-soft)',
+    problem: 'No sabes quién vuelve a tu negocio ni cada cuánto, porque nada queda anotado.',
+    // Texto alternativo del contenido: el panel del negocio (paso 11) aún no existe.
+    solution: 'Cada compra y cada canje queda registrado con la fecha y el cliente que los hizo.',
+  },
+];
+
+const words = cards.map((card) => card.word);
+const colors = cards.map((card) => card.accent);
+---
+
+<section id={id} class:list={['ps', className]} aria-labelledby={titleId} data-problem-section>
+  <div class="ps__glow" aria-hidden="true"></div>
+  <div class="ps__inner">
+    <header class="ps__head">
+      <p class="ps__eyebrow">El problema</p>
+      <h2 id={titleId} class="ps__title">Para un negocio pequeño, fidelizar clientes suele ser…</h2>
+      <MeltWord class="ps__word" words={words} colors={colors} holdMs={6000} morphMs={1200} />
+    </header>
+
+    <ul class="ps__cards" role="list">
+      {cards.map((card, i) => (
+        <li class="ps__cell">
+          <button
+            type="button"
+            class:list={['ps__card', { 'is-active': i === 0 }]}
+            style={`--ps-accent:${card.accent}`}
+            aria-pressed="false"
+            data-ps-card
+          >
+            <span class="ps__rule" aria-hidden="true"><span class="ps__fill"></span></span>
+            <span class="ps__card-title">{card.word}</span>
+            <span class="ps__problem">{card.problem}</span>
+            <span class="ps__sr">Con Loyalty: {card.solution}</span>
+            <span class="ps__sol" aria-hidden="true">
+              <span class="ps__sol-clip">
+                {['ghost', 'real'].map((kind) => (
+                  <span class={`ps__solution ps__solution--${kind}`}>
+                    <svg class="ps__check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                    <span><strong class="ps__solution-label">Con Loyalty:</strong> {card.solution}</span>
+                  </span>
+                ))}
+              </span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>
+
+<script>
+  // Espera antes de reanudar el bucle cuando el ratón o el foco salen de las cards.
+  const RESUME_MS = 2500;
+
+  const setup = (section: HTMLElement) => {
+    const word = section.querySelector<HTMLElement>('[data-melt-word]');
+    const cards = Array.from(section.querySelectorAll<HTMLButtonElement>('[data-ps-card]'));
+    if (!word || cards.length === 0) return;
+
+    // Con JS, las soluciones solo se ven en la card activa.
+    section.dataset.js = '';
+
+    // Duración del relleno = reposo de MeltWord (no se modifica MeltWord).
+    const hold = Number(word.dataset.hold);
+    if (Number.isFinite(hold) && hold > 0) section.style.setProperty('--ps-hold', `${Math.round(hold)}ms`);
+
+    let selected: number | null = null; // fijada con clic o toque
+    let preview: number | null = null; // bajo el ratón o con foco de teclado
+    let resumeTimer = 0;
+
+    const highlight = (index: number) => {
+      cards.forEach((card, i) => card.classList.toggle('is-active', i === index));
+      const accent = cards[index]?.style.getPropertyValue('--ps-accent');
+      if (accent) section.style.setProperty('--ps-active', accent);
+    };
+
+    // Relleno animado desde 0 en la card i; el reflow reinicia la animación.
+    const startProgress = (index: number) => {
+      cards.forEach((card) => card.classList.remove('is-progress', 'is-filled'));
+      const card = cards[index];
+      if (!card) return;
+      void card.offsetWidth;
+      card.classList.add('is-progress');
+    };
+
+    // Relleno al 100% fijo (hover, foco o fijada). Se queda así hasta el siguiente change.
+    const fill = (index: number) => {
+      cards.forEach((card, i) => {
+        card.classList.remove('is-progress');
+        card.classList.toggle('is-filled', i === index);
+      });
+    };
+
+    const send = (type: string, detail?: { index: number }) => {
+      word.dispatchEvent(new CustomEvent(type, { detail }));
+    };
+
+    const apply = () => {
+      const active = preview ?? selected;
+      window.clearTimeout(resumeTimer);
+      resumeTimer = 0;
+      if (active !== null) {
+        send('meltword:pause');
+        send('meltword:goto', { index: active });
+        highlight(active);
+        fill(active);
+      } else {
+        // La card resaltada se queda como está: coincide con la palabra visible.
+        resumeTimer = window.setTimeout(() => send('meltword:resume'), RESUME_MS);
+      }
+    };
+
+    const select = (index: number | null) => {
+      selected = index;
+      cards.forEach((card, i) => card.setAttribute('aria-pressed', String(i === index)));
+      apply();
+    };
+
+    cards.forEach((card, i) => {
+      card.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'touch') return; // en táctil manda el toque (click)
+        preview = i;
+        apply();
+      });
+      card.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'touch' || preview !== i) return;
+        preview = null;
+        apply();
+      });
+      card.addEventListener('focus', () => {
+        if (!card.matches(':focus-visible')) return; // solo foco de teclado
+        preview = i;
+        apply();
+      });
+      card.addEventListener('blur', () => {
+        if (preview !== i) return;
+        preview = null;
+        apply();
+      });
+      card.addEventListener('click', () => select(selected === i ? null : i));
+    });
+
+    // Clic fuera de las cards o Escape: suelta la selección.
+    document.addEventListener('click', (event) => {
+      if (selected === null) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-ps-card]') && section.contains(target)) return;
+      select(null);
+    });
+    section.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && selected !== null) select(null);
+    });
+
+    // Bucle automático: se activa la card de la palabra que quedó asentada y su
+    // relleno arranca de 0. No mueve el foco ni anuncia nada (sin aria-live).
+    word.addEventListener('meltword:change', (event) => {
+      if ((preview ?? selected) !== null) return;
+      const detail: unknown = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== 'object' || detail === null) return;
+      const index = Number((detail as { index?: unknown }).index);
+      if (!Number.isInteger(index) || index < 0 || index >= cards.length) return;
+      highlight(index);
+      startProgress(index);
+    });
+
+    // MeltWord no cuenta el reposo fuera de pantalla ni con la pestaña oculta:
+    // el relleno se congela en esos casos para no adelantarse a la palabra.
+    let onScreen = !('IntersectionObserver' in window);
+    const syncRun = () => section.toggleAttribute('data-ps-paused', !onScreen || document.hidden);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        for (const entry of entries) onScreen = entry.isIntersecting;
+        syncRun();
+      }).observe(word);
+    }
+    document.addEventListener('visibilitychange', syncRun);
+    syncRun();
+
+    // Estado inicial: MeltWord arranca en reposo en la palabra 0 sin emitir change.
+    startProgress(0);
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-problem-section]').forEach(setup);
+</script>
+
+<style>
+  .ps {
+    /* Acento de la card activa; lo actualiza el script. */
+    --ps-active: var(--accent);
+    /* Reposo de MeltWord; el script lo copia de su data-hold. */
+    --ps-hold: 1800ms;
+    position: relative;
+    overflow: hidden;
+    /* L4b: arriba menos aire, para no dejar un hueco con el hero. */
+    padding: clamp(3rem, 6vw, 5rem) var(--sp-6, 1.5rem) clamp(4.5rem, 10vw, 8rem);
+    /* Sin fondo propio: el del body, igual que el hero. */
+    background: transparent;
+    color: var(--c-text-1);
+  }
+  /* Resplandor detrás de la palabra: sigue el color de la card activa. */
+  .ps__glow {
+    position: absolute;
+    top: 8%;
+    left: 50%;
+    width: min(70vw, 720px);
+    height: min(40vw, 380px);
+    transform: translateX(-50%);
+    border-radius: 50%;
+    color: var(--ps-active);
+    background: radial-gradient(closest-side, currentColor, transparent);
+    opacity: 0.2;
+    filter: blur(60px);
+    pointer-events: none;
+    transition: color 0.8s ease;
+  }
+  .ps__inner {
+    position: relative;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  .ps__head { text-align: center; }
+  .ps__eyebrow {
+    margin: 0 0 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .ps__title {
+    max-width: 640px;
+    margin: 0 auto;
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--c-text-2);
+    text-wrap: balance;
+  }
+  /* :global porque la raíz de MeltWord pertenece a otro componente. */
+  .ps__head :global(.ps__word) { margin-top: clamp(0.75rem, 2vw, 1.25rem); }
+
+  /* Columnas: lista apilada en móvil; 3+2 alineadas a la izquierda en tablet; 5 en escritorio. */
+  .ps__cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    margin: clamp(3rem, 7vw, 5rem) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ps__cell { display: flex; }
+  @media (min-width: 640px) {
+    .ps__cards { grid-template-columns: repeat(6, 1fr); gap: 2.5rem 2rem; }
+    .ps__cell { grid-column: span 2; }
+  }
+  @media (min-width: 1024px) {
+    .ps__cards { grid-template-columns: repeat(5, 1fr); gap: 2rem; }
+    .ps__cell { grid-column: auto; }
+  }
+
+  .ps__card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin: 0;
+    padding: 0 0 0.25rem;
+    border: 0;
+    border-radius: var(--r-md, 12px);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ps__card:focus-visible {
+    outline: 2px solid var(--ps-accent);
+    outline-offset: 6px;
+  }
+
+  /* Línea superior tenue + relleno de progreso de 2px. */
+  .ps__rule {
+    position: relative;
+    display: block;
+    height: 1px;
+    margin-bottom: 1.25rem;
+    background: rgb(var(--ink-rgb) / 0.12);
+    transition: background-color 0.35s ease;
+  }
+  .ps__card.is-active .ps__rule {
+    background: color-mix(in srgb, var(--ps-accent) 25%, transparent);
+  }
+  .ps__fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -0.5px;
+    height: 2px;
+    background: var(--ps-accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+  .ps__card.is-active.is-progress .ps__fill {
+    animation: ps-fill var(--ps-hold) linear forwards;
+  }
+  .ps[data-ps-paused] .ps__fill { animation-play-state: paused; }
+  .ps__card.is-active.is-filled .ps__fill {
+    animation: none;
+    transform: scaleX(1);
+  }
+  @keyframes ps-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  .ps__card-title {
+    font-size: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--c-text-3);
+    transition: color 0.35s ease;
+  }
+  .ps__problem {
+    margin-top: 0.75rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--c-text-3);
+    transition: color 0.35s ease;
+  }
+  .ps__card.is-active .ps__card-title { color: var(--ps-accent); }
+  .ps__card.is-active .ps__problem { color: var(--c-text-2); }
+
+  .ps__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* "Con Loyalty": siempre en el DOM (nunca display:none). Móvil: se despliega 0fr→1fr. */
+  .ps__sol {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.35s ease;
+  }
+  .ps__sol-clip {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .ps__solution {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--c-text-1);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .ps__solution--ghost { display: none; }
+  .ps__solution-label { font-weight: 600; color: var(--ps-accent); }
+  .ps__check {
+    flex: none;
+    margin-top: 0.2em;
+    color: var(--ps-accent);
+  }
+  .ps[data-js] .ps__sol { grid-template-rows: 0fr; }
+  .ps[data-js] .ps__solution--real { opacity: 0; transform: translateY(4px); }
+  .ps[data-js] .ps__card.is-active .ps__sol { grid-template-rows: 1fr; }
+  .ps[data-js] .ps__card.is-active .ps__solution--real { opacity: 1; transform: none; }
+
+  /* Tablet y escritorio: la copia fantasma reserva la altura en la misma celda. */
+  @media (min-width: 640px) {
+    .ps__sol,
+    .ps[data-js] .ps__sol { display: block; }
+    .ps__sol-clip {
+      display: grid;
+      overflow: visible;
+    }
+    .ps__solution--ghost {
+      display: flex;
+      visibility: hidden;
+    }
+    .ps__solution--ghost,
+    .ps__solution--real { grid-area: 1 / 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ps__glow, .ps__rule, .ps__card-title, .ps__problem, .ps__sol, .ps__solution { transition: none; }
+    .ps__card.is-active .ps__fill,
+    .ps__card.is-active.is-progress .ps__fill {
+      animation: none;
+      transform: scaleX(1);
+    }
+    .ps[data-js] .ps__solution--real { transform: none; }
+  }
+</style>

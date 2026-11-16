@@ -1,0 +1,334 @@
+---
+/**
+ * Adaptado de HeroWaitlist — astrocomponents.dev
+ * Copyright (c) konstantinWDK/astro-components — Licencia MIT.
+ * Cambios respecto al original:
+ *  - L4c: el título usa LetterSwap.
+ *  - L4e: la aurora se desvanece hacia abajo con una máscara de degradado, la mancha
+ *    dorada pasa a ser violeta (L4m: aurora cálida naranja → ámbar → crema) y la sección no pinta fondo
+ *    propio (lo pone el body), para que no haya corte con la sección siguiente.
+ *  - L4b: textos en español (contenido/landing.md); sin contador ni avatares (eran
+ *    cifras y personas inventadas); casilla de consentimiento obligatoria (Ley 1581)
+ *    con enlace a la política; campo honeypot; sin éxito simulado: hasta L5 no hay
+ *    backend, así que un envío válido muestra un aviso neutro y no guarda nada.
+ *
+ * HeroWaitlist — hero de pre-lanzamiento con captura de email accesible y
+ * validación en el cliente.
+ *
+ * @param {string} badge - Texto de la pastilla de estado (vacío = sin pastilla).
+ * @param {string} title - Titular.
+ * @param {string} subtitle - Párrafo de apoyo.
+ * @param {string} note - Línea bajo el formulario.
+ * @param {string} action - URL del formulario (envía `email`).
+ * @param {string} buttonLabel - Texto del botón.
+ * @param {string} successMessage - Mensaje tras confirmación real del servidor (L5).
+ * @param {string} privacyHref - Enlace a la política de tratamiento de datos.
+ * @param {string} formId - id del formulario.
+ * @param {string} sectionId - id de la <section> del hero (destino de anclas: muestra el hero completo).
+ * @param {string} variant - Fondo (default|aurora|minimal).
+ * @param {string} size - Ritmo vertical (sm|md|lg).
+ * @param {string} className - Clase CSS extra.
+ */
+import LetterSwap from '../ui/LetterSwap.astro';
+
+interface Props {
+  badge?: string;
+  title: string;
+  subtitle: string;
+  note?: string;
+  action?: string;
+  buttonLabel?: string;
+  successMessage?: string;
+  privacyHref?: string;
+  formId?: string;
+  sectionId?: string;
+  variant?: 'default' | 'aurora' | 'minimal';
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+const {
+  badge = '',
+  title,
+  subtitle,
+  note = '',
+  action = '#',
+  buttonLabel = 'Quiero ser piloto',
+  successMessage = '',
+  privacyHref = '/privacidad',
+  formId,
+  sectionId,
+  variant = 'aurora',
+  size = 'lg',
+  className = '',
+} = Astro.props;
+
+const id = `hw-${Math.random().toString(36).slice(2, 8)}`;
+
+// Microcopy del formulario (contenido/landing.md). Los que solo usa L5 viajan como
+// data-* y el script de abajo no los muestra todavía.
+const copy = {
+  label: 'Tu email',
+  placeholder: 'tunegocio@correo.com',
+  errEmail: 'Escribe un email válido, por ejemplo tunegocio@correo.com',
+  errConsent: 'Para apuntarte necesitamos que aceptes el tratamiento de tu email.',
+  errDuplicate: 'Este email ya está en la lista. Te escribiremos pronto.',
+  errNetwork: 'No pudimos guardar tu email. Inténtalo de nuevo en un momento.',
+  loading: 'Guardando...',
+  // Aviso honesto mientras no hay backend (L3/L5): no es éxito.
+  notice: 'La lista de espera abre muy pronto. Aún no guardamos tu email.',
+};
+---
+
+<div class="cq-hero-waitlist-cq">
+<section id={sectionId} class={`hw hw--${variant} hw--${size} ${className}`} aria-labelledby={id}>
+  <div class="hw__aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="hw__inner">
+    {badge && <span class="hw__badge"><span class="hw__pulse" aria-hidden="true"></span>{badge}</span>}
+    <LetterSwap as="h1" id={id} class="hw__title" text={title} />
+    <p class="hw__subtitle">{subtitle}</p>
+
+    <form
+      id={formId}
+      class="hw__wrap"
+      action={action}
+      method="post"
+      novalidate
+      data-hw-form
+      data-success={successMessage}
+      data-duplicate={copy.errDuplicate}
+      data-network-error={copy.errNetwork}
+      data-loading={copy.loading}
+      data-notice={copy.notice}
+      data-err-email={copy.errEmail}
+      data-err-consent={copy.errConsent}
+    >
+      <div class="hw__form">
+        <label for={`${id}-email`} class="hw__sr">{copy.label}</label>
+        <input id={`${id}-email`} class="hw__input" type="email" name="email" placeholder={copy.placeholder} autocomplete="email" maxlength="254" required aria-describedby={`${id}-msg`} />
+        <button class="hw__btn" type="submit">
+          <span>{buttonLabel}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </button>
+      </div>
+
+      <div class="hw__consent">
+        <input id={`${id}-consent`} class="hw__check" type="checkbox" name="consent" value="true" required aria-describedby={`${id}-msg`} />
+        <label for={`${id}-consent`}>Acepto que Loyalty use mi email para contactarme sobre el piloto y he leído la <a href={privacyHref}>política de tratamiento de datos</a>.</label>
+      </div>
+
+      <!-- Honeypot: invisible para personas y lectores de pantalla; los bots lo rellenan. -->
+      <div class="hw__hp" aria-hidden="true">
+        <input type="text" name="company_website" tabindex="-1" autocomplete="off" />
+      </div>
+    </form>
+    <p id={`${id}-msg`} class="hw__msg" role="status" aria-live="polite"></p>
+
+    {note && <p class="hw__note">{note}</p>}
+  </div>
+</section>
+</div>
+<script>
+  document.querySelectorAll<HTMLFormElement>('[data-hw-form]').forEach((form) => {
+    const input = form.querySelector<HTMLInputElement>('input[type="email"]');
+    const consent = form.querySelector<HTMLInputElement>('input[name="consent"]');
+    const honeypot = form.querySelector<HTMLInputElement>('input[name="company_website"]');
+    const msg = document.getElementById(input?.getAttribute('aria-describedby') || '');
+
+    const show = (state: 'error' | 'notice', text: string) => {
+      if (!msg) return;
+      msg.dataset.state = state;
+      msg.textContent = text;
+    };
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!input || !consent || !msg) return;
+      if (honeypot && honeypot.value) return; // bot: se ignora sin avisar
+      input.value = input.value.trim();
+      if (!input.value || !input.checkValidity()) {
+        input.setAttribute('aria-invalid', 'true');
+        show('error', form.dataset.errEmail || '');
+        input.focus();
+        return;
+      }
+      input.removeAttribute('aria-invalid');
+      if (!consent.checked) {
+        consent.setAttribute('aria-invalid', 'true');
+        show('error', form.dataset.errConsent || '');
+        consent.focus();
+        return;
+      }
+      consent.removeAttribute('aria-invalid');
+      // Sin backend hasta L5: aviso neutro, no se guarda ni se limpia el campo.
+      show('notice', form.dataset.notice || '');
+    });
+
+    input?.addEventListener('input', () => {
+      input.removeAttribute('aria-invalid');
+      if (msg && msg.dataset.state === 'error') msg.textContent = '';
+    });
+    consent?.addEventListener('change', () => {
+      consent.removeAttribute('aria-invalid');
+      if (msg && msg.dataset.state === 'error' && consent.checked) msg.textContent = '';
+    });
+  });
+</script>
+
+<style>
+  .cq-hero-waitlist-cq { container-type: inline-size; }
+  .hw {
+    --hw-py: 6rem;
+    position: relative;
+    overflow: hidden;
+    padding: var(--hw-py) var(--sp-6, 1.5rem) var(--hw-pb, var(--hw-py));
+    background: transparent;
+    text-align: center;
+  }
+  .hw--sm { --hw-py: 4rem; }
+  /* L4b: abajo menos aire para acercar "El problema".
+     L4h: arriba 2rem menos (8.5 -> 6.5) porque la barra sticky se superpone al hero. */
+  .hw--lg { --hw-py: 6.5rem; --hw-pb: 6rem; }
+  .hw__aurora {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: none;
+    /* L4e: se funde con el fondo en el ~30% inferior en vez de cortarse en el borde. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
+  }
+  .hw--aurora .hw__aurora { display: block; }
+  .hw__aurora span {
+    position: absolute;
+    /* L4b: en móvil 40vw se quedaba en manchas diminutas. */
+    width: max(40vw, 260px);
+    height: max(40vw, 260px);
+    max-width: 520px;
+    max-height: 520px;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.2;
+    animation: hw-float 16s ease-in-out infinite alternate;
+  }
+  .hw__aurora span:nth-child(1) { background: var(--aurora-1); top: -10%; left: 10%; }
+  .hw__aurora span:nth-child(2) { background: var(--aurora-2); top: 10%; right: 5%; opacity: 0.16; animation-delay: -5s; }
+  .hw__aurora span:nth-child(3) { background: var(--aurora-3); bottom: -25%; left: 35%; opacity: 0.1; animation-delay: -10s; }
+  @keyframes hw-float { to { transform: translate(6%, 8%) scale(1.1); } }
+  .hw__inner { position: relative; max-width: 680px; margin: 0 auto; }
+  .hw__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.4rem 0.9rem;
+    border-radius: var(--r-full, 999px);
+    background: rgb(var(--ink-rgb) / 0.05);
+    border: 1px solid rgb(var(--ink-rgb) / 0.09);
+    font-size: 0.8125rem;
+    color: var(--c-text-1);
+  }
+  .hw__pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: hw-pulse 2s infinite; }
+  @keyframes hw-pulse { 70% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
+  .hw__title {
+    margin: 1.5rem 0 1rem;
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    color: var(--c-text-1);
+    text-wrap: balance;
+  }
+  .hw__subtitle { margin: 0 auto 2.25rem; max-width: 560px; font-size: 1.0625rem; line-height: 1.65; color: var(--c-text-2); }
+  .hw__form {
+    display: flex;
+    gap: 0.5rem;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0.4rem;
+    border-radius: var(--r-lg, 16px);
+    background: rgb(var(--ink-rgb) / 0.04);
+    border: 1px solid rgb(var(--ink-rgb) / 0.1);
+    backdrop-filter: blur(12px);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .hw__form:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .hw__input {
+    flex: 1;
+    min-width: 0;
+    min-height: 48px;
+    padding: 0 0.9rem;
+    border: 0;
+    background: transparent;
+    color: var(--c-text-1);
+    font-size: 1rem;
+    font-family: inherit;
+  }
+  .hw__input::placeholder { color: var(--c-text-3); opacity: 1; }
+  .hw__input:focus { outline: none; }
+  .hw__input[aria-invalid='true'] { box-shadow: inset 0 -2px 0 var(--c-danger); }
+  .hw__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 48px;
+    padding: 0 1.25rem;
+    border: 0;
+    border-radius: var(--r-md, 12px);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 650;
+    font-size: 0.9375rem;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .hw__btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--c-text-1)); }
+  .hw__btn:focus-visible { outline: 2px solid var(--c-focus); outline-offset: 2px; }
+  .hw__wrap { max-width: 480px; margin: 0 auto; }
+  .hw__consent {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin-top: 0.9rem;
+    text-align: left;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--c-text-2);
+  }
+  /* Objetivo táctil de 24px (WCAG 2.5.8); la etiqueta también lo activa. */
+  .hw__check {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    margin: -0.05rem 0 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .hw__check:focus-visible { outline: 2px solid var(--c-focus); outline-offset: 2px; }
+  .hw__check[aria-invalid='true'] { outline: 2px solid var(--c-danger); outline-offset: 2px; }
+  .hw__consent label { cursor: pointer; }
+  .hw__consent a { color: var(--c-text-1); text-decoration: underline; text-underline-offset: 2px; }
+  .hw__consent a:hover { color: var(--accent); }
+  .hw__consent a:focus-visible { outline: 2px solid var(--c-focus); outline-offset: 2px; border-radius: 2px; }
+  /* Honeypot fuera de pantalla (no display:none, que algunos bots detectan). */
+  .hw__hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+  .hw__msg { min-height: 1.5rem; margin: 0.75rem 0 0; font-size: 0.875rem; }
+  .hw__msg[data-state='error'] { color: var(--c-danger); }
+  .hw__msg[data-state='success'] { color: var(--c-success); }
+  .hw__msg[data-state='notice'] { color: var(--c-text-1); }
+  .hw__note { max-width: 480px; margin: 1rem auto 0; font-size: 0.875rem; line-height: 1.6; color: var(--c-text-2); }
+  .hw__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @container (max-width: 520px) {
+    .hw__form { flex-direction: column; }
+    .hw__btn { justify-content: center; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hw__aurora span, .hw__pulse { animation: none; }
+    .hw__form, .hw__btn { transition: none; }
+    .hw__btn { transform: none; }
+  }
+</style>

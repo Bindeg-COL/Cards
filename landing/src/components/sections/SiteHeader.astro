@@ -1,0 +1,202 @@
+---
+/**
+ * SiteHeader (L4h) — barra superior con logo Bindeg, enlaces a anclas que existen
+ * en la página y pill "Tarjetas de fidelidad en Wallet".
+ *
+ * Estructura:
+ *  - El logo es un PNG con alfa real (public/brand/bindeg-logo-alpha.png), sin
+ *    mix-blend-mode. Un blend en un elemento sticky obliga a recomponer la página
+ *    bajo la barra en cada frame de scroll (junto con el blur del velo, el filtro
+ *    gooey de MeltWord y la aurora animada) y producía tirones al desplazarse.
+ *  - El velo (oscuro + blur) es un elemento hermano detrás del header; solo se
+ *    activa al hacer scroll.
+ *  - El skip link va antes del header y es el primero en el orden de foco.
+ *
+ * Sin JS el velo queda transparente (la barra sigue funcionando).
+ *
+ * @param {Array<{href: string, label: string}>} links - Enlaces de la nav (anclas existentes).
+ */
+interface Props {
+  links: { href: string; label: string }[];
+}
+
+const { links } = Astro.props;
+---
+
+<a class="sh-skip" href="#contenido">Saltar al contenido</a>
+<div class="sh-sentinel" aria-hidden="true" data-sh-sentinel></div>
+<div class="sh-veil" aria-hidden="true" data-sh-veil></div>
+<header class="sh" data-sh-header>
+  <div class="sh__inner">
+    <div class="sh__left">
+      <a class="sh__logo" href="/" aria-label="Bindeg, inicio">
+        <img src="/brand/bindeg-logo-alpha.png" alt="Bindeg" width="1140" height="290" decoding="async" />
+      </a>
+      <nav class="sh__nav" aria-label="Principal">
+        {links.map((l) => <a class="sh__link" href={l.href}>{l.label}</a>)}
+      </nav>
+    </div>
+    <span class="sh__pill">
+      <span class="sh__dot" aria-hidden="true"></span>
+      <span class="sh__pill-long">Tarjetas de fidelidad en Wallet</span>
+      <span class="sh__pill-short">Tarjetas en Wallet</span>
+    </span>
+  </div>
+</header>
+
+<script>
+  const sentinel = document.querySelector('[data-sh-sentinel]');
+  const header = document.querySelector<HTMLElement>('[data-sh-header]');
+  const veil = document.querySelector<HTMLElement>('[data-sh-veil]');
+  if (sentinel && header && veil && 'IntersectionObserver' in window) {
+    new IntersectionObserver(([entry]) => {
+      const scrolled = !entry.isIntersecting;
+      for (const el of [header, veil]) {
+        if (scrolled) el.dataset.scrolled = '';
+        else delete el.dataset.scrolled;
+      }
+    }).observe(sentinel);
+  }
+</script>
+
+<style>
+  .sh,
+  .sh-veil {
+    --sh-h: 56px;
+    position: sticky;
+    top: 0;
+    height: var(--sh-h);
+    /* Se superpone al hero: la aurora queda detrás de la barra, sin corte. */
+    margin-bottom: calc(-1 * var(--sh-h));
+  }
+  @media (min-width: 640px) {
+    .sh,
+    .sh-veil { --sh-h: 64px; }
+  }
+
+  .sh-sentinel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+  }
+
+  .sh-veil {
+    z-index: 49;
+    pointer-events: none;
+    /* L4m: 0.86 para que la nav siga en AA al pasar sobre la hoja crema de "Pruébalo". */
+    background: rgb(var(--c-bg-rgb) / 0.86);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--c-border);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .sh-veil[data-scrolled] { opacity: 1; }
+
+  .sh {
+    z-index: 50;
+  }
+  .sh__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    height: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 var(--sp-6, 1.5rem);
+  }
+  .sh__left { display: flex; align-items: center; gap: 1.5rem; min-width: 0; }
+
+  .sh__logo { display: inline-flex; align-items: center; border-radius: 4px; }
+  .sh__logo img { display: block; height: 26px; width: auto; }
+  @media (min-width: 640px) { .sh__logo img { height: 30px; } }
+  @media (min-width: 1024px) { .sh__logo img { height: 34px; } }
+
+  .sh__nav { display: none; align-items: center; gap: 0.25rem; }
+  @media (min-width: 640px) { .sh__nav { display: flex; } }
+  .sh__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 0.75rem;
+    border-radius: var(--r-full, 999px);
+    font-size: 0.875rem;
+    color: var(--c-text-2);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+  .sh__link:hover { color: var(--c-text-1); }
+
+  .sh__logo:focus-visible,
+  .sh__link:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 3px;
+    border-radius: var(--r-full, 999px);
+  }
+
+  .sh__pill {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.4rem 0.9rem;
+    border-radius: var(--r-full, 999px);
+    background: rgb(var(--ink-rgb) / 0.05);
+    border: 1px solid var(--c-border);
+    font-size: 0.8125rem;
+    color: var(--c-text-1);
+    white-space: nowrap;
+  }
+  .sh__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  /* display:none también lo oculta al lector de pantalla: solo se oye un texto. */
+  .sh__pill-long { display: none; }
+  @media (min-width: 640px) {
+    .sh__pill-long { display: inline; }
+    .sh__pill-short { display: none; }
+  }
+  /* L4k: con 5 enlaces (Precios) la barra no cabe entre 640 y 839 px:
+     sin pill hasta 767 y con el texto corto hasta 839. */
+  @media (min-width: 640px) and (max-width: 767.98px) {
+    .sh__pill { display: none; }
+  }
+  @media (min-width: 768px) and (max-width: 839.98px) {
+    .sh__pill-long { display: none; }
+    .sh__pill-short { display: inline; }
+  }
+
+  .sh-skip {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .sh-skip:focus {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 60;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    padding: 0.6rem 1rem;
+    border-radius: var(--r-full, 999px);
+    background: var(--c-text-1);
+    color: var(--c-bg);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    outline: 2px solid var(--c-focus);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sh-veil, .sh__link { transition: none; }
+  }
+</style>

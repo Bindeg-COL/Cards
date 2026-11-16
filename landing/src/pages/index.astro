@@ -1,0 +1,49 @@
+---
+import Base from '../layouts/Base.astro';
+import HeroWaitlist from '../components/sections/HeroWaitlist.astro';
+import ProblemSection from '../components/sections/ProblemSection.astro';
+import HowItWorks from '../components/sections/HowItWorks.astro';
+import TryItSection from '../components/sections/TryItSection.astro';
+import PricingSection from '../components/sections/PricingSection.astro';
+import SiteHeader from '../components/sections/SiteHeader.astro';
+import SiteFooter from '../components/sections/SiteFooter.astro';
+
+// Textos de .claude/dev/contenido/landing.md (aprobados por Ed). Sin badge: la
+// etiqueta "cupos limitados" depende de un dato pendiente.
+const title = 'Tu tarjeta de fidelidad, directo en el celular de tus clientes';
+const subtitle = 'Tus clientes la guardan en Apple Wallet o Google Wallet, sin instalar nada. Tú escaneas su QR, sumas puntos y entregas recompensas con las reglas que tú defines.';
+---
+
+<Base title={`Loyalty · ${title}`} description={subtitle}>
+  <!-- L4h: solo anclas que existen en esta página (ProblemSection id="problema",
+       HowItWorks id="como-funciona", TryItSection id="pruebalo", PricingSection id="precios", sección del hero sectionId="piloto"; apuntar a la
+       sección, no al formulario, para que se vea el hero completo). -->
+  <SiteHeader
+    links={[
+      { href: '#problema', label: 'El problema' },
+      { href: '#como-funciona', label: 'Cómo funciona' },
+      { href: '#pruebalo', label: 'Pruébalo' },
+      { href: '#precios', label: 'Precios' },
+      { href: '#piloto', label: 'Piloto' },
+    ]}
+  />
+  <main id="contenido">
+    <HeroWaitlist
+      title={title}
+      subtitle={subtitle}
+      note="Estamos construyendo Loyalty con los primeros negocios. Si quieres ser uno de ellos, deja tu email."
+      buttonLabel="Quiero ser piloto"
+      successMessage="Listo, quedaste en la lista. Te escribiremos cuando abramos cupos para negocios piloto."
+      privacyHref="/privacidad"
+      formId="quiero-ser-piloto"
+      sectionId="piloto"
+    />
+    <ProblemSection />
+    <HowItWorks />
+    <TryItSection />
+    <!-- Última sección: recibe el min-height de main > section:last-of-type (global.css). -->
+    <PricingSection />
+  </main>
+  <!-- L4l: pie fuera de <main> (no recibe el min-height de la última sección). -->
+  <SiteFooter />
+</Base>

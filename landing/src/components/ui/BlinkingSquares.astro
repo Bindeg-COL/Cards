@@ -1,0 +1,349 @@
+---
+/**
+ * BlinkingSquares — campo de cuadritos que titilan (L4n, decisión 009: implementación
+ * propia con <canvas> 2D, sin dependencias). Parámetros de Ed (React Bits) adaptados a
+ * la paleta "Carbón y brasa": mezcla de naranja #FF6A3D y ámbar #E8A24A.
+ *
+ * - Ocupa su contenedor posicionado (position:absolute; inset:0). No cambia la altura
+ *   del documento: el canvas se dimensiona al contenedor con ResizeObserver (debounce).
+ * - Semilla fija: el patrón es el mismo en cada carga y en cada resize.
+ * - Rendimiento: DPR ≤ 2, ~30 fps, rAF solo con el campo en pantalla
+ *   (IntersectionObserver) y la pestaña visible. Sin mix-blend ni filtros.
+ * - prefers-reduced-motion: un frame estático. Sin JS: el canvas queda transparente.
+ * - Decorativo: aria-hidden y pointer-events:none.
+ *
+ * @param {'bottom'|'top'|'left'|'right'} direction - Borde más denso (por defecto 'bottom').
+ * @param {number} grid - Tamaño de la rejilla. Con gridMode 'rows' (por defecto) es el
+ *   número de filas en la altura del campo, como en la vista previa de Ed (celdas de
+ *   8–16 px); con 'px' es el lado de la celda en píxeles.
+ * @param {'rows'|'px'} gridMode - Cómo se interpreta `grid`.
+ * @param {number} square - Lado del cuadro respecto a la celda (0–1).
+ * @param {number} fadeStart - Distancia (0–1) desde el borde denso donde empieza el desvanecido.
+ * @param {number} fadeEnd - Distancia (0–1) donde termina.
+ * @param {number} falloff - Dureza de la caída de densidad (0–1).
+ * @param {number} minBrightness - Brillo mínimo de un cuadro encendido.
+ * @param {number} twinkleSpeed - Velocidad del titileo.
+ * @param {number} twinkleStrength - Amplitud del titileo (0–1).
+ * @param {number} intensity - Multiplicador de brillo.
+ * @param {number} opacity - Opacidad de los cuadros (0–1).
+ * @param {number} level - Opacidad global del campo (para que no compita con el texto).
+ * @param {number} seed - Semilla del patrón.
+ * @param {string} class - Clases extra.
+ */
+interface Props {
+  direction?: 'bottom' | 'top' | 'left' | 'right';
+  grid?: number;
+  gridMode?: 'rows' | 'px';
+  square?: number;
+  fadeStart?: number;
+  fadeEnd?: number;
+  falloff?: number;
+  minBrightness?: number;
+  twinkleSpeed?: number;
+  twinkleStrength?: number;
+  intensity?: number;
+  opacity?: number;
+  level?: number;
+  seed?: number;
+  class?: string;
+  [attr: `data-${string}`]: unknown;
+}
+
+const {
+  direction = 'bottom',
+  grid = 52,
+  gridMode = 'rows',
+  square = 0.57,
+  fadeStart = 0.33,
+  fadeEnd = 1,
+  falloff = 0.95,
+  minBrightness = 0.55,
+  twinkleSpeed = 2.05,
+  twinkleStrength = 0.94,
+  intensity = 1.15,
+  opacity = 1,
+  level = 0.42,
+  seed = 1581,
+  class: className = '',
+  ...rest
+} = Astro.props;
+
+const cfg = JSON.stringify({
+  direction,
+  grid,
+  gridMode,
+  square,
+  fadeStart,
+  fadeEnd,
+  falloff,
+  minBrightness,
+  twinkleSpeed,
+  twinkleStrength,
+  intensity,
+  opacity,
+  seed,
+});
+---
+
+<canvas
+  class:list={['bsq', className]}
+  aria-hidden="true"
+  data-bsq={cfg}
+  style={`--bsq-level:${level}`}
+  {...rest}
+></canvas>
+
+<script>
+  type Dir = 'bottom' | 'top' | 'left' | 'right';
+  interface Cfg {
+    direction: Dir;
+    grid: number;
+    gridMode: 'rows' | 'px';
+    square: number;
+    fadeStart: number;
+    fadeEnd: number;
+    falloff: number;
+    minBrightness: number;
+    twinkleSpeed: number;
+    twinkleStrength: number;
+    intensity: number;
+    opacity: number;
+    seed: number;
+  }
+
+  const DEFAULTS: Cfg = {
+    direction: 'bottom',
+    grid: 52,
+    gridMode: 'rows',
+    square: 0.57,
+    fadeStart: 0.33,
+    fadeEnd: 1,
+    falloff: 0.95,
+    minBrightness: 0.55,
+    twinkleSpeed: 2.05,
+    twinkleStrength: 0.94,
+    intensity: 1.15,
+    opacity: 1,
+    seed: 1581,
+  };
+  const DIRS: Dir[] = ['bottom', 'top', 'left', 'right'];
+  // Naranja #FF6A3D → ámbar #E8A24A en 4 tonos (agrupados para cambiar fillStyle 4 veces por frame).
+  const TONES = [0, 1 / 3, 2 / 3, 1].map((t) => {
+    const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
+    return `rgb(${mix(255, 232)} ${mix(106, 162)} ${mix(61, 74)})`;
+  });
+  const FRAME_MS = 1000 / 30;
+  const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+  const parse = (raw: string | undefined): Cfg => {
+    let p: Record<string, unknown> = {};
+    try {
+      const v: unknown = JSON.parse(raw ?? '{}');
+      if (v && typeof v === 'object') p = v as Record<string, unknown>;
+    } catch {
+      /* config inválida: valores por defecto */
+    }
+    return {
+      direction: DIRS.includes(p.direction as Dir) ? (p.direction as Dir) : DEFAULTS.direction,
+      grid: Math.max(4, num(p.grid, DEFAULTS.grid)),
+      gridMode: p.gridMode === 'px' ? 'px' : 'rows',
+      square: clamp01(num(p.square, DEFAULTS.square)),
+      fadeStart: clamp01(num(p.fadeStart, DEFAULTS.fadeStart)),
+      fadeEnd: clamp01(num(p.fadeEnd, DEFAULTS.fadeEnd)),
+      falloff: clamp01(num(p.falloff, DEFAULTS.falloff)),
+      minBrightness: clamp01(num(p.minBrightness, DEFAULTS.minBrightness)),
+      twinkleSpeed: Math.max(0, num(p.twinkleSpeed, DEFAULTS.twinkleSpeed)),
+      twinkleStrength: clamp01(num(p.twinkleStrength, DEFAULTS.twinkleStrength)),
+      intensity: Math.max(0, num(p.intensity, DEFAULTS.intensity)),
+      opacity: clamp01(num(p.opacity, DEFAULTS.opacity)),
+      seed: num(p.seed, DEFAULTS.seed) >>> 0,
+    };
+  };
+
+  // PRNG con semilla (mulberry32): patrón estable.
+  const rng = (seed: number) => () => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const setup = (canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext('2d');
+    const host = canvas.parentElement;
+    if (!ctx || !host) return;
+    const cfg = parse(canvas.dataset.bsq);
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    // Celdas encendidas, en arreglos planos agrupados por tono.
+    let xs = new Float32Array(0);
+    let ys = new Float32Array(0);
+    let base = new Float32Array(0);
+    let phase = new Float32Array(0);
+    let rate = new Float32Array(0);
+    let toneEnd: number[] = [];
+    let side = 0;
+    let dpr = 1;
+
+    const build = () => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
+      if (!w || !h) {
+        xs = new Float32Array(0);
+        toneEnd = [0, 0, 0, 0];
+        return;
+      }
+      const vertical = cfg.direction === 'bottom' || cfg.direction === 'top';
+      const span = vertical ? h : w;
+      const cell =
+        cfg.gridMode === 'px' ? cfg.grid : Math.min(16, Math.max(8, span / cfg.grid));
+      const cols = Math.ceil(w / cell);
+      const rows = Math.ceil(h / cell);
+      // Centra la rejilla y la ancla al borde denso.
+      const ox = (w - cols * cell) / 2;
+      const oy = cfg.direction === 'top' ? 0 : h - rows * cell;
+      side = Math.max(1, Math.round(cell * cfg.square * dpr)) / dpr;
+      const inset = (cell - side) / 2;
+      const rand = rng(cfg.seed);
+      const span0 = Math.max(0.001, cfg.fadeEnd - cfg.fadeStart);
+      // falloff alto = caída más pronunciada de la densidad.
+      const power = 1 + cfg.falloff * 1.6;
+      const buckets: number[][] = [[], [], [], []];
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          // Los aleatorios se consumen siempre en el mismo orden (patrón estable).
+          const pick = rand();
+          const b = rand();
+          const ph = rand();
+          const sp = rand();
+          const tone = rand();
+          const cx = (c + 0.5) / cols;
+          const cy = (r + 0.5) / rows;
+          const d =
+            cfg.direction === 'bottom' ? 1 - cy : cfg.direction === 'top' ? cy : cfg.direction === 'left' ? cx : 1 - cx;
+          const f = d <= cfg.fadeStart ? 1 : clamp01(1 - (d - cfg.fadeStart) / span0);
+          const density = Math.pow(f, power) * 0.9;
+          if (pick >= density) continue;
+          // El brillo también se apaga con la distancia, pero más suave que la densidad.
+          const fade = 0.35 + 0.65 * Math.sqrt(f);
+          const bright = (cfg.minBrightness + (1 - cfg.minBrightness) * b) * fade;
+          buckets[Math.min(3, Math.floor(tone * 4))].push(
+            ox + c * cell + inset,
+            oy + r * cell + inset,
+            bright,
+            ph * Math.PI * 2,
+            0.6 + sp * 0.8,
+          );
+        }
+      }
+
+      const n = buckets.reduce((s, k) => s + k.length / 5, 0);
+      xs = new Float32Array(n);
+      ys = new Float32Array(n);
+      base = new Float32Array(n);
+      phase = new Float32Array(n);
+      rate = new Float32Array(n);
+      toneEnd = [];
+      let i = 0;
+      for (const k of buckets) {
+        for (let j = 0; j < k.length; j += 5, i++) {
+          xs[i] = Math.round(k[j] * dpr) / dpr;
+          ys[i] = Math.round(k[j + 1] * dpr) / dpr;
+          base[i] = k[j + 2];
+          phase[i] = k[j + 3];
+          rate[i] = k[j + 4];
+        }
+        toneEnd.push(i);
+      }
+    };
+
+    const draw = (t: number) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const k = cfg.twinkleSpeed * 0.001;
+      const amp = cfg.twinkleStrength;
+      const gain = cfg.intensity * cfg.opacity;
+      let i = 0;
+      for (let tone = 0; tone < 4; tone++) {
+        ctx.fillStyle = TONES[tone];
+        const end = toneEnd[tone] ?? 0;
+        for (; i < end; i++) {
+          const wave = 0.5 + 0.5 * Math.sin(t * k * rate[i] + phase[i]);
+          const a = base[i] * (1 - amp * wave) * gain;
+          if (a < 0.02) continue;
+          ctx.globalAlpha = a > 1 ? 1 : a;
+          ctx.fillRect(xs[i], ys[i], side, side);
+        }
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    let raf = 0;
+    let last = -Infinity;
+    let onScreen = false;
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
+      if (now - last < FRAME_MS - 1) return;
+      last = now;
+      draw(now);
+    };
+    const stop = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    const sync = () => {
+      const run = onScreen && !document.hidden && !reduce.matches;
+      if (run && !raf) raf = requestAnimationFrame(loop);
+      else if (!run) stop();
+    };
+    const still = () => draw(0);
+
+    build();
+    still();
+
+    let timer = 0;
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        build();
+        still();
+      }, 150);
+    });
+    ro.observe(host);
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(
+        (entries) => {
+          onScreen = entries.some((e) => e.isIntersecting);
+          sync();
+        },
+        { rootMargin: '80px 0px' },
+      ).observe(canvas);
+    }
+    document.addEventListener('visibilitychange', sync);
+    reduce.addEventListener('change', () => {
+      sync();
+      still();
+    });
+  };
+
+  document.querySelectorAll<HTMLCanvasElement>('canvas[data-bsq]').forEach(setup);
+</script>
+
+<style>
+  .bsq {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    opacity: var(--bsq-level, 0.42);
+    pointer-events: none;
+  }
+</style>

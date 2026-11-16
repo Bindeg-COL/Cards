@@ -1,0 +1,339 @@
+---
+/**
+ * MeltWord — palabra gigante que se "derrite" de un valor a otro, en bucle.
+ * Implementación propia (decisión 004: sin dependencias).
+ *
+ * Dos spans superpuestos se cruzan con blur + opacidad (requestAnimationFrame).
+ * Mientras dura la transición, el contenedor lleva un filtro SVG de umbral alfa
+ * (feColorMatrix, efecto "gooey") que funde las dos siluetas en una sola.
+ * En reposo el filtro se quita para que el texto se vea nítido.
+ *
+ * - Lectores de pantalla: el visual va con aria-hidden; un span oculto
+ *   visualmente enumera todas las palabras.
+ * - prefers-reduced-motion o sin JS: palabra estática, sin bucle.
+ * - El bucle se pausa fuera de pantalla y con la pestaña oculta.
+ * - Admite varias instancias (id de filtro único por instancia).
+ *
+ * El tamaño se controla con `--mw-size` (por defecto clamp(3.5rem, 14vw, 10rem));
+ * peso y color base se heredan o se cambian con `class`. Con `colors`, el color
+ * de cada palabra se aplica con `--mw-color` y transiciona junto con la palabra.
+ *
+ * API por eventos DOM en la raíz (`[data-melt-word]`), L4e:
+ * - Escucha `meltword:goto` (detail: { index }): se derrite hacia esa palabra.
+ *   Si ya está en ella no hace nada. Si hay una transición en curso hacia otra
+ *   palabra, la termina acelerada y sigue hacia el nuevo destino. Con reduced
+ *   motion (o fuera de pantalla) el cambio es instantáneo.
+ * - Escucha `meltword:pause` / `meltword:resume`: detiene o reanuda el bucle
+ *   automático (goto sigue funcionando en pausa).
+ * - Emite `meltword:change` (detail: { index }, burbujea) cuando una palabra
+ *   queda asentada.
+ *
+ * @param {string[]} words - Palabras a recorrer (requerido).
+ * @param {string[]} colors - Color por palabra, mismo largo que `words` (opcional).
+ *   Solo se aceptan `#hex` o `var(--token)`; si el largo no coincide se ignora.
+ * @param {number} holdMs - Tiempo en reposo de cada palabra en ms (por defecto 1800).
+ * @param {number} morphMs - Duración de la transición en ms (por defecto 1000).
+ * @param {string} class - Clases extra para la raíz.
+ */
+interface Props {
+  words: string[];
+  colors?: string[];
+  holdMs?: number;
+  morphMs?: number;
+  class?: string;
+}
+
+const { words, colors, holdMs = 1800, morphMs = 1000, class: className = '' } = Astro.props;
+
+const ms = (value: number, fallback: number) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : fallback;
+};
+
+// Lista blanca: el color acaba en un atributo style y en style.setProperty.
+const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|var\(--[\w-]+\))$/;
+
+const rawWords = Array.isArray(words) ? words : [];
+const rawColors = Array.isArray(colors) && colors.length === rawWords.length ? colors : null;
+const entries = rawWords
+  .map((w, i) => ({ word: String(w).trim(), color: rawColors ? String(rawColors[i]).trim() : '' }))
+  .filter((entry) => entry.word);
+
+const list = entries.map((entry) => entry.word);
+const colorList = rawColors && entries.every((entry) => COLOR_RE.test(entry.color))
+  ? entries.map((entry) => entry.color)
+  : null;
+
+const morph = ms(morphMs, 1000);
+const filterId = `mw-${Math.random().toString(36).slice(2, 8)}`;
+const rootStyle = [`--mw-morph:${morph}ms`, colorList ? `--mw-color:${colorList[0]}` : '']
+  .filter(Boolean)
+  .join(';');
+---
+
+{list.length > 0 && (
+  <div
+    class:list={['mw', className]}
+    style={rootStyle}
+    data-melt-word
+    data-words={JSON.stringify(list)}
+    data-colors={colorList ? JSON.stringify(colorList) : undefined}
+    data-hold={ms(holdMs, 1800)}
+    data-morph={morph}
+    data-filter={filterId}
+  >
+    <span class="mw__sr">{list.join(', ')}</span>
+    <span class="mw__stage" aria-hidden="true">
+      <span class="mw__word" data-mw-current>{list[0]}</span>
+      <span class="mw__word mw__word--next" data-mw-next></span>
+    </span>
+    <svg class="mw__defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <filter id={filterId} x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB">
+          <feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 255 -140" />
+        </filter>
+      </defs>
+    </svg>
+  </div>
+)}
+
+<script>
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const MAX_BLUR_EM = 0.6;
+  const BLUR_EM = 0.08;
+  // Una transición que ya no es el destino pedido se termina a esta velocidad.
+  const CATCH_UP = 3;
+  const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|var\(--[\w-]+\))$/;
+
+  const parseList = (raw: string | undefined): string[] => {
+    try {
+      const parsed: unknown = JSON.parse(raw ?? '[]');
+      return Array.isArray(parsed) ? parsed.filter((w): w is string => typeof w === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const setup = (root: HTMLElement) => {
+    const words = parseList(root.dataset.words);
+    const colors = parseList(root.dataset.colors).filter((c) => COLOR_RE.test(c));
+    const hasColors = colors.length === words.length;
+    const stage = root.querySelector<HTMLElement>('.mw__stage');
+    const current = root.querySelector<HTMLElement>('[data-mw-current]');
+    const next = root.querySelector<HTMLElement>('[data-mw-next]');
+    if (!stage || !current || !next || words.length < 2) return;
+
+    const holdMs = Number(root.dataset.hold) || 0;
+    const morphMs = Math.max(Number(root.dataset.morph) || 0, 1);
+    const filter = root.dataset.filter ? `url(#${root.dataset.filter})` : '';
+
+    let index = 0; // palabra asentada
+    let to = 0; // destino de la transición en curso
+    let target: number | null = null; // destino pedido con meltword:goto
+    let paused = false; // bucle automático en pausa (meltword:pause)
+    let phase: 'hold' | 'morph' = 'hold';
+    let elapsed = 0;
+    let last = 0;
+    let frame = 0;
+    let onScreen = !('IntersectionObserver' in window);
+
+    const canAnimate = () => onScreen && !document.hidden && !reducedMotion.matches;
+    // En pausa, en reposo y sin destino pendiente no hace falta gastar frames.
+    const isIdle = () => phase === 'hold' && paused && target === null;
+
+    // fraction: 0 = invisible y muy desenfocada, 1 = nítida y opaca.
+    const paint = (el: HTMLElement, fraction: number) => {
+      const f = Math.min(Math.max(fraction, 0.0001), 1);
+      const blur = Math.min(BLUR_EM / f - BLUR_EM, MAX_BLUR_EM);
+      el.style.filter = `blur(${blur.toFixed(3)}em)`;
+      el.style.opacity = Math.pow(f, 0.4).toFixed(3);
+    };
+
+    const rest = () => {
+      stage.style.filter = '';
+      current.style.filter = '';
+      current.style.opacity = '';
+      next.style.filter = '';
+      next.style.opacity = '';
+      next.textContent = '';
+    };
+
+    const setColor = (i: number) => {
+      const color = hasColors ? colors[i] : undefined;
+      if (color) root.style.setProperty('--mw-color', color);
+    };
+
+    // Empieza a derretirse hacia la palabra i. El color transiciona por CSS.
+    const begin = (i: number) => {
+      to = i;
+      phase = 'morph';
+      elapsed = 0;
+      next.textContent = words[i] ?? '';
+      stage.style.filter = filter;
+      setColor(i);
+    };
+
+    // Deja la palabra i asentada y nítida, y avisa.
+    const settle = (i: number) => {
+      index = i;
+      to = i;
+      phase = 'hold';
+      elapsed = 0;
+      current.textContent = words[i] ?? '';
+      rest();
+      setColor(i);
+      if (target === i) target = null;
+      root.dispatchEvent(new CustomEvent('meltword:change', { bubbles: true, detail: { index: i } }));
+    };
+
+    const tick = (now: number) => {
+      // Tras una pausa no se "recupera" el tiempo perdido.
+      const dt = last ? Math.min(now - last, 100) : 0;
+      last = now;
+
+      if (phase === 'hold') {
+        elapsed += dt;
+        if (target !== null) {
+          begin(target);
+        } else if (!paused && elapsed >= holdMs) {
+          begin((index + 1) % words.length);
+        }
+      } else {
+        elapsed += dt * (target !== null && target !== to ? CATCH_UP : 1);
+        const f = elapsed / morphMs;
+        if (f >= 1) {
+          settle(to);
+        } else {
+          paint(current, 1 - f);
+          paint(next, f);
+        }
+      }
+
+      if (isIdle()) {
+        frame = 0;
+        last = 0;
+      } else {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+
+    const stop = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      last = 0;
+    };
+
+    const sync = () => {
+      const shouldRun = canAnimate() && !isIdle();
+      if (shouldRun && !frame) {
+        frame = requestAnimationFrame(tick);
+      } else if (!shouldRun && frame) {
+        stop();
+      }
+      // Estático: si quedó algo a medias, se asienta de golpe en su destino.
+      if (reducedMotion.matches && (phase === 'morph' || target !== null)) {
+        settle(target ?? to);
+      }
+    };
+
+    const goTo = (i: number) => {
+      if (!Number.isInteger(i) || i < 0 || i >= words.length) return;
+      if (!canAnimate()) {
+        // Reduced motion, fuera de pantalla o pestaña oculta: cambio instantáneo.
+        target = null;
+        if (i !== index || phase === 'morph') settle(i);
+        return;
+      }
+      const alreadyThere = phase === 'hold' ? i === index : i === to;
+      target = alreadyThere ? null : i;
+      sync();
+    };
+
+    root.addEventListener('meltword:goto', (event) => {
+      const detail: unknown = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== 'object' || detail === null) return;
+      goTo(Number((detail as { index?: unknown }).index));
+    });
+    root.addEventListener('meltword:pause', () => {
+      paused = true;
+    });
+    root.addEventListener('meltword:resume', () => {
+      if (!paused) return;
+      paused = false;
+      if (phase === 'hold') elapsed = 0;
+      sync();
+    });
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        for (const entry of entries) onScreen = entry.isIntersecting;
+        sync();
+      }).observe(root);
+    }
+    document.addEventListener('visibilitychange', sync);
+    reducedMotion.addEventListener('change', sync);
+    sync();
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-melt-word]').forEach(setup);
+</script>
+
+<style>
+  .mw {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    max-width: 100%;
+    font-size: var(--mw-size, clamp(3.5rem, 14vw, 10rem));
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+    color: var(--mw-color, var(--c-text-1));
+    text-align: center;
+    transition: color var(--mw-morph, 1000ms) ease;
+  }
+  .mw__stage {
+    display: inline-grid;
+    justify-items: center;
+    /* Aire para que el blur y el umbral no se recorten en los bordes. */
+    padding: 0.08em 0.12em;
+  }
+  .mw__word {
+    grid-area: 1 / 1;
+    white-space: nowrap;
+    will-change: filter, opacity;
+  }
+  .mw__word--next {
+    opacity: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+  }
+  /* No usar display:none: algunos navegadores ignoran filtros de un SVG oculto así. */
+  .mw__defs {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .mw__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+    font-size: 1rem;
+    letter-spacing: normal;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mw { transition: none; }
+    .mw__word--next { display: none; }
+    .mw__word { will-change: auto; }
+  }
+</style>

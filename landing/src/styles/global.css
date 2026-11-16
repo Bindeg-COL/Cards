@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/*
+ * Tokens de diseño compartidos (L4e, paleta L4m). Una sola fuente para todas las
+ * secciones. Los componentes consumen los semánticos (--accent*, --c-*, --ink-rgb).
+ */
+:root {
+  color-scheme: dark;
+
+  /*
+   * L4m — Paleta "Carbón y brasa" (decisión 008). Carbón cálido + crema + un solo
+   * acento naranja Bindeg; los secundarios son apagados y nunca compiten con él.
+   * Contraste (WCAG) sobre --c-bg: texto-2 8.98, texto-3 5.96, naranja 6.77;
+   * texto-3 sobre --c-surface-3 4.82; --accent-ink sobre --accent 6.77.
+   */
+
+  /* Superficie y texto */
+  --c-bg: #100e0c;
+  --c-bg-rgb: 16 14 12;
+  --c-surface: #17140f;
+  --c-surface-2: #1f1b16;
+  --c-surface-3: #28231c;
+  --c-text-1: #f3eee4;
+  --c-text-2: #b9b0a2;
+  --c-text-3: #978e80;
+
+  /* Bordes y velos: crema con alfa baja -> rgb(var(--ink-rgb) / 0.1) */
+  --ink-rgb: 243 238 228;
+  --c-border: rgb(var(--ink-rgb) / 0.1);
+  --c-border-strong: rgb(var(--ink-rgb) / 0.2);
+
+  /* Acento único y secundarios apagados */
+  --accent: #ff6a3d;
+  --accent-soft: #ffb38f; /* naranja diluido (paso 1 de "Cómo funciona", 5.ª palabra) */
+  --accent-mid: #ff8a5e; /* naranja intermedio (paso 2) */
+  --accent-deep: #b8340a; /* naranja como TEXTO sobre crema (5.05:1) */
+  --accent-ink: #100e0c; /* texto sobre --accent (6.77:1; el blanco da 2.85) */
+  --accent-2: #e8a24a; /* ámbar */
+  --accent-3: #9dbf8a; /* salvia */
+  --accent-4: #d9755f; /* arcilla */
+  --c-focus: #ffb38f;
+
+  /* Aurora e hilo: naranja -> ámbar -> crema, sin violeta ni azul */
+  --aurora-1: var(--accent);
+  --aurora-2: var(--accent-2);
+  --aurora-3: #f3e3cf;
+
+  /* Estados, cálidos */
+  --c-danger: #ff9a85;
+  --c-success: #b5d49f;
+
+  /* Panel crema (toque de C, solo en "Pruébalo") */
+  --cream-bg: #f1ece2;
+  --cream-surface: #e9e3d7;
+  --cream-raise: #fbf8f2;
+  --cream-ink: #141414;
+  --cream-ink-rgb: 20 20 20;
+  --cream-text-2: #4a453d; /* 8.07:1 sobre crema */
+  --cream-text-3: #5e584e; /* 5.98:1 sobre crema, 5.51 sobre --cream-surface */
+  --cream-danger: #a3301a; /* 5.96:1 */
+  --cream-success: #3e6a2c; /* 5.40:1 */
+
+  /* Alias heredados (no usar en código nuevo): apuntan a la paleta nueva. */
+  --accent-violet: var(--accent);
+  --accent-blue: var(--accent-2);
+  --accent-emerald: var(--accent-3);
+  --accent-pink: var(--accent-4);
+  --accent-amber: var(--accent-2);
+  --chart-1: var(--accent-2);
+  --chart-2: var(--accent-2);
+  --chart-3: var(--accent-3);
+  --chart-5: var(--accent-4);
+  --chart-7: var(--accent);
+  --chart-pos: var(--accent-3);
+  --chart-neg: var(--c-danger);
+
+  /* Espaciado y radios (L4b) */
+  --sp-6: 1.5rem;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-full: 999px;
+}
+
+@layer base {
+  body {
+    background: var(--c-bg);
+    color: var(--c-text-1);
+  }
+
+  /* L4h: la barra sticky (56/64px) no tapa los destinos de ancla. */
+  main[id],
+  section[id],
+  form[id] {
+    scroll-margin-top: 5rem;
+  }
+
+  /* Regla anclas: la última sección debe poder subir hasta debajo de la barra.
+     Sin esto, si la página es corta, el navegador topa con el final y el ancla
+     queda "a medias" (el scroll se detiene en el máximo y rebota). */
+  main > section:last-of-type {
+    min-height: calc(100vh - 5rem);
+    min-height: calc(100svh - 5rem);
+  }
+}

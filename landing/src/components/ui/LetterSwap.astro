@@ -1,0 +1,168 @@
+---
+/**
+ * LetterSwap — efecto "letter swap 3D" propio (decisión 003: sin dependencias).
+ *
+ * Cada letra es un pequeño cubo con dos caras (la misma letra). Al activarse,
+ * la letra gira 90° en X y muestra la cara de abajo, con retraso escalonado.
+ *
+ * - Ratón (hover + puntero fino): gira al pasar por encima y vuelve al salir.
+ * - Táctil: se reproduce una vez al entrar en pantalla y de nuevo en cada toque.
+ * - prefers-reduced-motion: texto estático.
+ * - Lectores de pantalla: leen `aria-label`; las letras van con aria-hidden.
+ *   Nota: `aria-label` solo es fiable en encabezados (as="h1" | "h2").
+ *
+ * La tipografía (tamaño, peso, color) se hereda del contexto o de `class`.
+ * Los atributos extra (incluido el de estilos scoped del padre) pasan a la raíz.
+ *
+ * @param {string} text - Texto a mostrar (requerido).
+ * @param {'h1'|'h2'|'p'} as - Etiqueta raíz (por defecto 'p').
+ * @param {string} id - id de la raíz.
+ * @param {string} class - Clases extra para la raíz.
+ * @param {number} stagger - Retraso entre letras en ms (por defecto 30).
+ * @param {number} duration - Duración del giro de cada letra en ms (por defecto 600).
+ */
+interface Props {
+  text: string;
+  as?: 'h1' | 'h2' | 'p';
+  id?: string;
+  class?: string;
+  stagger?: number;
+  duration?: number;
+  [attr: `data-${string}`]: unknown;
+}
+
+const {
+  text,
+  as: Tag = 'p',
+  id,
+  class: className = '',
+  stagger = 30,
+  duration = 600,
+  ...rest
+} = Astro.props;
+
+const ms = (value: number, fallback: number) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+let index = 0;
+// Se parte por espacios conservándolos: las palabras van en bloques que no se
+// cortan y los espacios quedan como texto normal (el salto de línea es por palabra).
+const tokens = text.split(/(\s+)/).filter((token) => token !== '').map((token) =>
+  /^\s+$/.test(token)
+    ? { space: true as const }
+    : {
+        space: false as const,
+        chars: Array.from(segmenter.segment(token), (s) => ({ char: s.segment, i: index++ })),
+      },
+);
+---
+
+<Tag
+  {...rest}
+  id={id}
+  class:list={['ls', className]}
+  aria-label={text}
+  data-letter-swap
+  style={`--ls-stagger:${ms(stagger, 30)}ms;--ls-duration:${ms(duration, 600)}ms`}
+>{tokens.map((token) =>
+    token.space ? ' ' : (
+      <span class="ls__word" aria-hidden="true">{token.chars.map(({ char, i }) => (
+        <span class="ls__char" style={`--i:${i}`} aria-hidden="true"><span class="ls__face" aria-hidden="true">{char}</span><span class="ls__face ls__face--back" aria-hidden="true">{char}</span></span>
+      ))}</span>
+    ),
+  )}</Tag>
+
+<script>
+  // En dispositivos con ratón el efecto es solo CSS (:hover). Aquí se cubre el táctil.
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const roots = document.querySelectorAll<HTMLElement>('[data-letter-swap]');
+
+  const play = (root: HTMLElement) => {
+    if (finePointer.matches || reducedMotion.matches) return;
+    if (root.classList.contains('is-swapping')) return;
+    const chars = root.querySelectorAll('.ls__char');
+    const last = chars[chars.length - 1];
+    if (!last) return;
+    // La posición final es visualmente idéntica a la inicial: al quitar la clase no hay salto.
+    last.addEventListener('animationend', () => root.classList.remove('is-swapping'), { once: true });
+    root.classList.add('is-swapping');
+  };
+
+  const observer =
+    'IntersectionObserver' in window
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              observer?.unobserve(entry.target);
+              play(entry.target as HTMLElement);
+            }
+          },
+          { threshold: 0.6 },
+        )
+      : null;
+
+  roots.forEach((root) => {
+    observer?.observe(root);
+    root.addEventListener('click', () => play(root));
+  });
+</script>
+
+<style>
+  .ls__word {
+    display: inline-block;
+    white-space: nowrap;
+    perspective: 600px;
+  }
+  .ls__char {
+    display: inline-block;
+    position: relative;
+    transform-style: preserve-3d;
+    /* Eje de giro en el centro del cubo (profundidad = media altura de línea). */
+    transform-origin: 50% 50% -0.5em;
+    transform-origin: 50% 50% -0.5lh;
+  }
+  .ls__face {
+    display: inline-block;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .ls__face--back {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 50% -0.5em;
+    transform-origin: 50% 50% -0.5lh;
+    transform: rotateX(-90deg);
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+  }
+
+  /* La raíz se referencia con :global([data-letter-swap]) para no depender de
+     que la etiqueta dinámica reciba el atributo de scope de este componente. */
+  @media (prefers-reduced-motion: no-preference) {
+    @media (hover: hover) and (pointer: fine) {
+      .ls__char {
+        transition: transform var(--ls-duration, 600ms) cubic-bezier(0.65, 0, 0.35, 1);
+        transition-delay: calc(var(--i, 0) * var(--ls-stagger, 30ms));
+      }
+      :global([data-letter-swap]):hover .ls__char {
+        transform: rotateX(90deg);
+      }
+    }
+    :global([data-letter-swap].is-swapping) .ls__char {
+      animation: ls-swap var(--ls-duration, 600ms) cubic-bezier(0.65, 0, 0.35, 1) both;
+      animation-delay: calc(var(--i, 0) * var(--ls-stagger, 30ms));
+    }
+  }
+  @keyframes ls-swap {
+    to { transform: rotateX(90deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ls__face--back { display: none; }
+  }
+</style>

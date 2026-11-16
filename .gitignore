@@ -1,0 +1,19 @@
+# Claude Code: nunca al repo (en cualquier nivel del árbol)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+
+# Secretos (regla de seguridad 4)
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+
+# Dependencias y builds
+node_modules/
+dist/
+.turbo/
+
+# Sistema
+.DS_Store

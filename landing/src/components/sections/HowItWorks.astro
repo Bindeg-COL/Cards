@@ -1,0 +1,1214 @@
+---
+/**
+ * HowItWorks — sección "Cómo funciona" (L4i, decisión 005; diseno.md "Visual — L4i").
+ *
+ * Tres pasos con un hilo SVG (crema → ámbar → naranja, L4m) que se dibuja una vez al
+ * entrar en pantalla y enciende cada círculo al llegar. Después, una narrativa
+ * automática pone "viva" una viñeta a la vez (micro-animaciones CSS + contador con
+ * requestAnimationFrame en el paso 3); las demás quedan en su estado final atenuadas.
+ * Textos de contenido/landing.md (sin CTA de piloto: regla 5 de diseno.md).
+ *
+ * Interacción (script al final):
+ * - Los círculos son botones ("Ver paso N"; el activo lleva aria-current="step").
+ *   Clic, hover (puntero no táctil) o foco de teclado saltan a ese paso y detienen
+ *   el avance; el ciclo se reanuda RESUME_MS después de soltar.
+ * - El ciclo y las animaciones se pausan fuera de pantalla y con la pestaña oculta.
+ *
+ * Geometría del hilo: el script mide los centros de los círculos y arma el path
+ * según --hiw-mode (h: horizontal con curvas, ≥1024; wave: vertical ondulado,
+ * 640–1023; v: vertical recto, <640). Con --hiw-bleed: 1 (≥1280) el SVG ocupa
+ * 100vw y se desvanece con una máscara en los bordes.
+ *
+ * Sin JS: todo en su estado final (los estados iniciales solo existen dentro de
+ * las animaciones de `.hiw[data-js] .is-live`); el hilo calculado no existe y en
+ * <1024 queda una línea CSS de respaldo. Con reduced motion: hilo dibujado,
+ * círculos encendidos y viñetas estáticas en su estado final.
+ *
+ * Rendimiento: solo se animan transform, opacity y stroke-dashoffset; sin blur
+ * animado ni mix-blend; will-change solo en los elementos de la viñeta viva.
+ *
+ * @param {string} id - id de la sección (ancla). El h2 usa `${id}-titulo`.
+ * @param {string} class - Clases extra para la sección.
+ */
+interface Props {
+  id?: string;
+  class?: string;
+}
+
+const { id = 'como-funciona', class: className = '' } = Astro.props;
+const titleId = `${id}-titulo`;
+const gradId = `${id}-hilo`;
+
+const steps = [
+  {
+    title: 'Define tu programa',
+    description:
+      'Las reglas son tuyas: la marca de tu tarjeta, cuánto vale cada compra y el premio que gana tu cliente al llegar a la meta.',
+    accent: 'var(--accent-soft)',
+    durationMs: 3500,
+  },
+  {
+    title: 'Invita a guardar la tarjeta',
+    description:
+      'Sin instalar nada: tu cliente agrega la tarjeta a Apple Wallet o Google Wallet desde tu enlace y acepta el trato de sus datos.',
+    accent: 'var(--accent-mid)',
+    durationMs: 3500,
+  },
+  {
+    title: 'Escanea y suma puntos',
+    description:
+      'Escaneas el QR desde el navegador, sumas la compra y el saldo se actualiza en su pase; al llegar al premio, lo canjeas en caja.',
+    accent: 'var(--accent)',
+    // Paso destacado (contenido): un poco más largo para que se lean escaneo y canje.
+    durationMs: 4500,
+  },
+];
+
+// QR 7×7 genérico y decorativo (no codifica nada).
+const qrRows = ['1110101', '1010010', '1110111', '0101000', '1011011', '0010101', '1101110'];
+const qrCells = qrRows.flatMap((row, y) =>
+  [...row].flatMap((bit, x) => (bit === '1' ? [{ x, y }] : [])),
+);
+---
+
+<section id={id} class:list={['hiw', className]} aria-labelledby={titleId} data-how-it-works>
+  <div class="hiw__inner">
+    <header class="hiw__head">
+      <p class="hiw__eyebrow">Cómo funciona</p>
+      <h2 id={titleId} class="hiw__title">De tu regla de puntos al saldo en la billetera</h2>
+      <p class="hiw__sub">
+        Defines tu programa, tu cliente guarda la tarjeta en su celular y tú sumas puntos desde el navegador. Sin descargar apps.
+      </p>
+    </header>
+
+    <div class="hiw__flow" data-hiw-flow>
+      <svg class="hiw__thread" aria-hidden="true" focusable="false" data-hiw-thread>
+        <defs>
+          <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0" data-hiw-grad>
+            <stop offset="0" stop-color="var(--aurora-3)" />
+            <stop offset="0.5" stop-color="var(--aurora-2)" data-hiw-mid />
+            <stop offset="1" stop-color="var(--aurora-1)" />
+          </linearGradient>
+        </defs>
+        <path class="hiw__track" d="" pathLength="1" data-hiw-path />
+        <path class="hiw__live" d="" pathLength="1" stroke={`url(#${gradId})`} data-hiw-path data-hiw-live />
+      </svg>
+
+      <ol class="hiw__steps" role="list">
+        {steps.map((step, i) => (
+          <li class="hiw__step" style={`--hiw-accent:${step.accent};--hiw-dur:${step.durationMs}ms`} data-hiw-step data-dur={step.durationMs}>
+            <div class="hiw__marker">
+              <button type="button" class="hiw__dot" aria-label={`Ver paso ${i + 1}`} data-hiw-dot>{i + 1}</button>
+            </div>
+            <div class="hiw__text">
+              <h3 class="hiw__step-title">{step.title}</h3>
+              <p class="hiw__desc">{step.description}</p>
+            </div>
+
+            <div class="hiw__vis" aria-hidden="true">
+              {i === 0 && (
+                <>
+                  <div class="hiw__vis-top">
+                    <span class="hiw__vlabel">Tu programa</span>
+                    <span class="hiw__tag">Ejemplo ilustrativo</span>
+                  </div>
+                  <div class="hiw-panel hiw-cfg">
+                    <div class="hiw-cfg__brand">
+                      <span class="hiw-cfg__swatch hiw-a"></span>
+                      <span class="hiw-cfg__name">Café de la esquina</span>
+                    </div>
+                    <div class="hiw-cfg__chips">
+                      <span class="hiw-chip hiw-chip--compra">
+                        <span class="hiw-chip__on hiw-a"></span>
+                        <span class="hiw-chip__txt">Por compra</span>
+                      </span>
+                      <span class="hiw-chip">
+                        <span class="hiw-chip__txt">Por monto</span>
+                      </span>
+                      <span class="hiw-chip hiw-chip--sellos">
+                        <span class="hiw-chip__on hiw-a"></span>
+                        <span class="hiw-chip__txt">Sellos</span>
+                        <svg class="hiw-cursor hiw-a" viewBox="0 0 12 17" width="14" height="19" focusable="false"><path d="M1 1v13.2l3.3-3 2.4 5.2 2.2-1-2.4-5.1H11z" /></svg>
+                      </span>
+                    </div>
+                    <div class="hiw-stack hiw-cfg__rule">
+                      <span class="hiw-cfg__rule-a hiw-a">1 punto por compra</span>
+                      <span class="hiw-cfg__rule-b hiw-a">10 sellos = 1 café gratis</span>
+                    </div>
+                    <span class="hiw-cfg__reward hiw-a">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 8h18v4H3zM5 12v8h14v-8M12 8v12M12 8C10 5 7 5 7 6.5S10 8 12 8zm0 0c2-3 5-3 5-1.5S14 8 12 8z" /></svg>
+                      1 café gratis
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {i === 1 && (
+                <>
+                  <div class="hiw__vis-top">
+                    <span class="hiw__vlabel">Tu cliente</span>
+                    <span class="hiw__tag">Ejemplo ilustrativo</span>
+                  </div>
+                  <div class="hiw-phone">
+                    <div class="hiw-consent">
+                      <span class="hiw-check">
+                        <span class="hiw-check__on hiw-a">
+                          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                        </span>
+                      </span>
+                      <span>Acepto el tratamiento de mis datos</span>
+                    </div>
+                    <div class="hiw-wbtns">
+                      <span class="hiw-wbtn hiw-wbtn--apple hiw-a">Agregar a Apple Wallet</span>
+                      <span class="hiw-wbtn">Agregar a Google Wallet</span>
+                    </div>
+                    <div class="hiw-pass hiw-a">
+                      <span class="hiw-pass__name">Café de la esquina</span>
+                      <span class="hiw-pass__ok hiw-a">
+                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                      </span>
+                      <span class="hiw-pass__sub">Tarjeta de fidelidad</span>
+                      <svg class="hiw-pass__qr" viewBox="-1 -1 9 9" width="40" height="40" shape-rendering="crispEdges" focusable="false">
+                        <rect x="-1" y="-1" width="9" height="9" rx="1" class="hiw-qr__bg" />
+                        {qrCells.map((c) => <rect x={c.x} y={c.y} width="1" height="1" />)}
+                      </svg>
+                      <span class="hiw-pass__row"><span class="hiw-muted">Sellos</span> <span class="hiw-mono">3 de 10</span></span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {i === 2 && (
+                <>
+                  <div class="hiw__vis-top">
+                    <span class="hiw__tag">Ejemplo ilustrativo</span>
+                  </div>
+                  <div class="hiw-panel hiw-pos">
+                    <div class="hiw-scan">
+                      <div class="hiw-qr">
+                        <svg viewBox="0 0 7 7" width="62" height="62" shape-rendering="crispEdges" focusable="false">
+                          {qrCells.map((c) => <rect x={c.x} y={c.y} width="1" height="1" />)}
+                        </svg>
+                        <span class="hiw-qr__sweep hiw-a"></span>
+                      </div>
+                      <div class="hiw-scan__info">
+                        <span class="hiw-stack hiw-scan__status">
+                          <span class="hiw-scan__a hiw-a">Escaneando QR…</span>
+                          <span class="hiw-scan__b hiw-a">Compra registrada</span>
+                        </span>
+                        <span class="hiw-plus hiw-a">+1 sello</span>
+                        <span class="hiw-saldo">Saldo: <span class="hiw-mono hiw-count hiw-a" data-hiw-count data-from="3">4</span> de 10</span>
+                      </div>
+                    </div>
+                    <div class="hiw-mini">
+                      <span class="hiw-muted">Sellos</span>
+                      <span class="hiw-mono"><span class="hiw-count hiw-a" data-hiw-count data-from="3">4</span> de 10</span>
+                    </div>
+                  </div>
+                  <div class="hiw-panel hiw-redeem hiw-a">
+                    <span class="hiw-redeem__prize hiw-a">Premio disponible: 1 café gratis</span>
+                    <span class="hiw-stack">
+                      <span class="hiw-redeem__btn hiw-a">Canjear</span>
+                      <span class="hiw-redeem__done hiw-a">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                        Canjeado
+                      </span>
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Espera antes de reanudar el ciclo tras clic, o al salir el ratón o el foco de un círculo.
+  const RESUME_MS = 2500;
+  // Duración del dibujo del hilo.
+  const DRAW_MS = 1800;
+  // Ventana del contador del paso con saldo (fracción de su duración).
+  const COUNT_START = 0.44;
+  const COUNT_SPAN = 0.06;
+
+  type Pt = { x: number; y: number };
+
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+  // Largo aproximado de una cúbica por muestreo.
+  const cubicLength = (p0: Pt, c1: Pt, c2: Pt, p3: Pt) => {
+    let len = 0;
+    let prev = p0;
+    for (let k = 1; k <= 16; k++) {
+      const t = k / 16;
+      const u = 1 - t;
+      const pt = {
+        x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p3.x,
+        y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p3.y,
+      };
+      len += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+      prev = pt;
+    }
+    return len;
+  };
+
+  const setup = (section: HTMLElement) => {
+    const flow = section.querySelector<HTMLElement>('[data-hiw-flow]');
+    const svg = section.querySelector<SVGSVGElement>('[data-hiw-thread]');
+    const live = section.querySelector<SVGPathElement>('[data-hiw-live]');
+    const grad = section.querySelector<SVGLinearGradientElement>('[data-hiw-grad]');
+    const midStop = section.querySelector<SVGStopElement>('[data-hiw-mid]');
+    const paths = Array.from(section.querySelectorAll<SVGPathElement>('[data-hiw-path]'));
+    const steps = Array.from(section.querySelectorAll<HTMLElement>('[data-hiw-step]'));
+    const buttons = steps
+      .map((step) => step.querySelector<HTMLButtonElement>('[data-hiw-dot]'))
+      .filter((b): b is HTMLButtonElement => b !== null);
+    if (!flow || !svg || !live || !grad || !midStop || steps.length === 0 || buttons.length !== steps.length) return;
+
+    const durations = steps.map((step) => {
+      const v = Number(step.dataset.dur);
+      return Number.isFinite(v) && v > 0 ? v : 3500;
+    });
+    const countStep = steps.findIndex((step) => step.querySelector('[data-hiw-count]') !== null);
+    const counts = countStep >= 0 ? Array.from(steps[countStep].querySelectorAll<HTMLElement>('[data-hiw-count]')) : [];
+    const countFrom = counts.map((el) => Number(el.dataset.from));
+    const countTo = counts.map((el) => Number(el.textContent));
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Con JS existen los estados "apagado" y las animaciones de la viñeta viva.
+    section.dataset.js = '';
+    if (reduce) section.dataset.hiwReduced = '';
+
+    // ---- Geometría del hilo ----
+    let fractions: number[] = buttons.map(() => 0);
+    const layout = () => {
+      const box = svg.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) return;
+      const pts: Pt[] = buttons.map((b) => {
+        const r = b.getBoundingClientRect();
+        return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top };
+      });
+      const css = getComputedStyle(section);
+      const mode = css.getPropertyValue('--hiw-mode').trim();
+      const bleed = mode === 'h' && css.getPropertyValue('--hiw-bleed').trim() === '1';
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      const nodes = bleed ? [{ x: 0, y: first.y }, ...pts, { x: box.width, y: last.y }] : pts;
+      const offset = bleed ? 1 : 0;
+
+      let d = `M${round(nodes[0].x)} ${round(nodes[0].y)}`;
+      const lengths = [0];
+      for (let i = 1; i < nodes.length; i++) {
+        const a = nodes[i - 1];
+        const b = nodes[i];
+        let c1: Pt;
+        let c2: Pt;
+        if (mode === 'h') {
+          const mx = (a.x + b.x) / 2;
+          c1 = { x: mx, y: a.y };
+          c2 = { x: mx, y: b.y };
+        } else {
+          const dy = (b.y - a.y) / 3;
+          const w = mode === 'wave' ? (i % 2 ? 28 : -28) : 0;
+          c1 = { x: a.x + w, y: a.y + dy };
+          c2 = { x: b.x - w, y: b.y - dy };
+        }
+        d += ` C${round(c1.x)} ${round(c1.y)} ${round(c2.x)} ${round(c2.y)} ${round(b.x)} ${round(b.y)}`;
+        lengths.push(lengths[i - 1] + cubicLength(a, c1, c2, b));
+      }
+      paths.forEach((p) => p.setAttribute('d', d));
+
+      const total = lengths[lengths.length - 1];
+      fractions = pts.map((_, k) => (total > 0 ? lengths[k + offset] / total : 0));
+
+      // Degradado en coordenadas del SVG: crema en el 1, ámbar en el 2, naranja en el 3 (L4m).
+      const horizontal = mode === 'h';
+      grad.setAttribute('x1', String(round(first.x)));
+      grad.setAttribute('y1', String(round(first.y)));
+      grad.setAttribute('x2', String(round(horizontal ? last.x : first.x)));
+      grad.setAttribute('y2', String(round(horizontal ? first.y : last.y)));
+      const mid = pts[Math.floor(pts.length / 2)];
+      const span = horizontal ? last.x - first.x : last.y - first.y;
+      const at = span !== 0 ? (horizontal ? mid.x - first.x : mid.y - first.y) / span : 0.5;
+      midStop.setAttribute('offset', String(round(clamp01(at) * 100) / 100));
+    };
+
+    let layoutFrame = 0;
+    const scheduleLayout = () => {
+      if (layoutFrame) return;
+      layoutFrame = requestAnimationFrame(() => {
+        layoutFrame = 0;
+        layout();
+      });
+    };
+    layout();
+    if ('ResizeObserver' in window) new ResizeObserver(scheduleLayout).observe(flow);
+    else window.addEventListener('resize', scheduleLayout);
+
+    // ---- Reloj del ciclo (solo corre en pantalla y con la pestaña visible) ----
+    let current = -1;
+    let started = false;
+    let held = false;
+    let onScreen = !('IntersectionObserver' in window);
+    let acc = 0; // ms acumulados del paso actual
+    let since = 0; // performance.now() desde que corre; 0 si está en pausa
+    let stepTimer = 0;
+    let countFrame = 0;
+
+    const isRunning = () => started && onScreen && !document.hidden && !reduce;
+    const elapsed = () => acc + (since ? performance.now() - since : 0);
+
+    const setCounts = (value: (k: number) => number) => {
+      counts.forEach((el, k) => {
+        const v = String(value(k));
+        if (el.textContent !== v) el.textContent = v;
+      });
+    };
+
+    const tickCount = () => {
+      countFrame = 0;
+      if (!isRunning() || current !== countStep) return;
+      const p = elapsed() / durations[current];
+      const t = clamp01((p - COUNT_START) / COUNT_SPAN);
+      const eased = 1 - (1 - t) * (1 - t);
+      setCounts((k) => Math.round(countFrom[k] + (countTo[k] - countFrom[k]) * eased));
+      if (t < 1) countFrame = requestAnimationFrame(tickCount);
+    };
+    const kickCount = () => {
+      if (!countFrame && isRunning() && current === countStep) countFrame = requestAnimationFrame(tickCount);
+    };
+
+    const setCurrent = (index: number, restart: boolean) => {
+      if (index === current && !restart) return;
+      if (current === countStep) setCounts((k) => countTo[k]);
+      steps.forEach((step) => step.classList.remove('is-live'));
+      current = index;
+      acc = 0;
+      since = isRunning() ? performance.now() : 0;
+      buttons.forEach((b, k) => {
+        if (k === index) b.setAttribute('aria-current', 'step');
+        else b.removeAttribute('aria-current');
+      });
+      if (reduce) return;
+      // El reflow reinicia las animaciones si el paso ya estaba vivo.
+      void steps[index].offsetWidth;
+      steps[index].classList.add('is-live');
+      if (index === countStep) setCounts((k) => countFrom[k]);
+    };
+
+    const schedule = () => {
+      window.clearTimeout(stepTimer);
+      stepTimer = 0;
+      if (!isRunning() || held || current < 0) return;
+      const wait = Math.max(0, durations[current] - elapsed());
+      stepTimer = window.setTimeout(() => {
+        stepTimer = 0;
+        setCurrent((current + 1) % steps.length, true);
+        schedule();
+        kickCount();
+      }, wait);
+    };
+
+    const sync = () => {
+      const run = isRunning();
+      section.toggleAttribute('data-hiw-paused', !run);
+      if (run && !since) since = performance.now();
+      if (!run && since) {
+        acc += performance.now() - since;
+        since = 0;
+      }
+      schedule();
+      kickCount();
+    };
+
+    const start = () => {
+      started = true;
+      if (current < 0) setCurrent(0, true);
+      sync();
+    };
+
+    // ---- Dibujo del hilo (una vez) ----
+    let drawn = false;
+    const light = (k: number) => buttons[k].classList.add('is-lit');
+    const draw = () => {
+      if (drawn) return;
+      drawn = true;
+      if (reduce) {
+        live.classList.add('is-drawn');
+        buttons.forEach((_, k) => light(k));
+        start();
+        return;
+      }
+      section.style.setProperty('--hiw-draw', `${DRAW_MS}ms`);
+      void live.getBoundingClientRect(); // fija el estado inicial antes de la transición
+      live.classList.add('is-drawn');
+      fractions.forEach((fr, k) => {
+        window.setTimeout(() => {
+          light(k);
+          if (k === 0) start();
+        }, fr * DRAW_MS);
+      });
+    };
+
+    // ---- Interacción con los círculos ----
+    let hoverIndex: number | null = null;
+    let focusIndex: number | null = null;
+    let resumeTimer = 0;
+
+    const hold = (index: number, restart: boolean) => {
+      window.clearTimeout(resumeTimer);
+      resumeTimer = 0;
+      held = true;
+      if (!drawn) draw();
+      started = true;
+      setCurrent(index, restart);
+      sync();
+    };
+    const release = () => {
+      if (hoverIndex !== null || focusIndex !== null) return;
+      window.clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(() => {
+        resumeTimer = 0;
+        held = false;
+        schedule();
+      }, RESUME_MS);
+    };
+
+    buttons.forEach((button, i) => {
+      button.addEventListener('click', () => {
+        hold(i, true);
+        release();
+      });
+      button.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'touch') return; // en táctil manda el toque (click)
+        hoverIndex = i;
+        hold(i, false);
+      });
+      button.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'touch' || hoverIndex !== i) return;
+        hoverIndex = null;
+        release();
+      });
+      button.addEventListener('focus', () => {
+        if (!button.matches(':focus-visible')) return; // solo foco de teclado
+        focusIndex = i;
+        hold(i, false);
+      });
+      button.addEventListener('blur', () => {
+        if (focusIndex !== i) return;
+        focusIndex = null;
+        release();
+      });
+    });
+
+    // ---- Disparadores: dibujo al entrar, pausa fuera de pantalla o con pestaña oculta ----
+    if ('IntersectionObserver' in window) {
+      const drawObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            drawObserver.disconnect();
+            draw();
+          }
+        },
+        { rootMargin: '0px 0px -35% 0px' },
+      );
+      drawObserver.observe(flow);
+      new IntersectionObserver((entries) => {
+        for (const entry of entries) onScreen = entry.isIntersecting;
+        sync();
+      }).observe(section);
+    } else {
+      draw();
+    }
+    document.addEventListener('visibilitychange', sync);
+    sync();
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-how-it-works]').forEach(setup);
+</script>
+
+<style>
+  .hiw {
+    /* Geometría del hilo que lee el script: v (<640), wave (640–1023), h (≥1024). */
+    --hiw-mode: v;
+    --hiw-bleed: 0;
+    --hiw-dot: 28px;
+    --hiw-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    overflow: clip;
+    /* Mismo ritmo vertical que ProblemSection. */
+    padding: clamp(3rem, 6vw, 5rem) var(--sp-6, 1.5rem) clamp(4.5rem, 10vw, 8rem);
+    background: transparent;
+    color: var(--c-text-1);
+  }
+  .hiw__inner {
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+
+  /* ---- Cabecera ---- */
+  .hiw__head {
+    max-width: 720px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .hiw__eyebrow {
+    margin: 0 0 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .hiw__title {
+    margin: 0;
+    font-size: clamp(1.75rem, 4.2vw, 2.75rem);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .hiw__sub {
+    max-width: 600px;
+    margin: 1rem auto 0;
+    font-size: clamp(1rem, 1.6vw, 1.125rem);
+    line-height: 1.6;
+    color: var(--c-text-2);
+    text-wrap: pretty;
+  }
+
+  /* ---- Flujo: hilo + pasos ---- */
+  .hiw__flow {
+    position: relative;
+    margin-top: clamp(3rem, 7vw, 5rem);
+  }
+  .hiw__thread {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .hiw:not([data-js]) .hiw__thread { display: none; }
+  .hiw__track {
+    fill: none;
+    stroke: rgb(var(--ink-rgb) / 0.1);
+    stroke-width: 1;
+  }
+  .hiw__live {
+    fill: none;
+    stroke-width: 2;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset var(--hiw-draw, 1800ms) linear;
+  }
+  .hiw__live.is-drawn { stroke-dashoffset: 0; }
+
+  .hiw__steps {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 3rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* Sin JS: línea de respaldo por la columna de los círculos (<1024). */
+  .hiw:not([data-js]) .hiw__steps::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: calc(var(--hiw-dot) / 2);
+    bottom: 0;
+    left: calc(var(--hiw-dot) / 2 - 1px);
+    width: 2px;
+    background: linear-gradient(var(--aurora-3), var(--aurora-2), var(--aurora-1));
+    opacity: 0.5;
+  }
+
+  /* Móvil: círculo + texto, viñeta debajo del texto. */
+  .hiw__step {
+    display: grid;
+    grid-template-columns: var(--hiw-dot) minmax(0, 1fr);
+    grid-template-areas:
+      'marker text'
+      '. vis';
+    column-gap: 1rem;
+    row-gap: 1.25rem;
+  }
+  .hiw__marker { grid-area: marker; align-self: start; }
+  .hiw__text { grid-area: text; }
+  .hiw__vis { grid-area: vis; }
+
+  /* ---- Círculo numerado ---- */
+  .hiw__dot {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--hiw-dot);
+    height: var(--hiw-dot);
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--hiw-accent);
+    border-radius: 50%;
+    background: var(--hiw-accent);
+    color: var(--c-bg);
+    font: 600 0.8125rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* L4m: un solo naranja que se intensifica: pasos 1 y 2 en contorno, el 3 relleno. */
+  .hiw__step:not(:last-child) .hiw__dot {
+    background: color-mix(in srgb, var(--hiw-accent) 14%, var(--c-bg));
+    color: var(--hiw-accent);
+  }
+  /* Apagado hasta que llega el trazo (solo con JS). */
+  .hiw[data-js] .hiw__dot:not(.is-lit) {
+    border-color: var(--c-border-strong);
+    background: var(--c-bg);
+    color: var(--c-text-2);
+  }
+  /* Aro del paso activo. */
+  .hiw__dot::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border: 1px solid var(--hiw-accent);
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .hiw__dot[aria-current='step']::before { opacity: 0.7; }
+  /* Aro que pulsa una vez al encenderse. */
+  .hiw__dot::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border: 2px solid var(--hiw-accent);
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .hiw[data-js] .hiw__dot.is-lit::after { animation: hiw-ring 900ms ease-out both; }
+  .hiw__dot:focus-visible {
+    outline: 2px solid var(--hiw-accent);
+    outline-offset: 8px;
+  }
+
+  /* ---- Texto del paso ---- */
+  .hiw__step-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    color: var(--c-text-1);
+  }
+  .hiw__desc {
+    margin: 0.625rem 0 0;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--c-text-2);
+  }
+
+  /* ---- Viñeta ---- */
+  .hiw__vis {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    /* Si el contenido no cabe, la viñeta crece (sin overflow oculto). */
+    aspect-ratio: 4 / 4.4;
+    padding: 1rem;
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg, 16px);
+    background: var(--c-surface);
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--c-text-1);
+    transition: opacity 0.5s ease;
+  }
+  /* Las viñetas no vivas quedan en su estado final atenuadas. 0.75 (no 0.55) para
+     que el texto --c-text-2 siga por encima de 4.5:1 sobre el fondo. */
+  .hiw[data-js]:not([data-hiw-reduced]) .hiw__vis { opacity: 0.75; }
+  .hiw[data-js] .hiw__step.is-live .hiw__vis { opacity: 1; }
+  .hiw[data-js]:not([data-hiw-paused]) .is-live .hiw-a { will-change: transform, opacity; }
+
+  .hiw__vis-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .hiw__vlabel {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--c-text-2);
+  }
+  .hiw__tag {
+    margin-left: auto;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--r-full, 999px);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    color: var(--c-text-2);
+  }
+  .hiw-panel {
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-md, 12px);
+    background: rgb(var(--ink-rgb) / 0.02);
+    padding: 0.875rem;
+  }
+  .hiw-stack {
+    display: grid;
+    justify-items: start;
+  }
+  .hiw-stack > * { grid-area: 1 / 1; }
+  .hiw-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .hiw-muted { color: var(--c-text-2); }
+
+  /* Paso 1: configuración */
+  .hiw-cfg {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1rem;
+  }
+  .hiw-cfg__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .hiw-cfg__swatch {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--hiw-accent);
+  }
+  .hiw-cfg__name { font-size: 0.9375rem; font-weight: 600; }
+  .hiw-cfg__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .hiw-chip {
+    position: relative;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--r-full, 999px);
+    font-size: 0.75rem;
+    color: var(--c-text-2);
+  }
+  .hiw-chip__on {
+    position: absolute;
+    inset: -1px;
+    border: 1px solid var(--hiw-accent);
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--hiw-accent) 20%, transparent);
+  }
+  .hiw-chip--compra .hiw-chip__on { opacity: 0; }
+  .hiw-chip__txt { position: relative; }
+  .hiw-chip--sellos .hiw-chip__txt { color: var(--c-text-1); }
+  .hiw-cursor {
+    position: absolute;
+    right: -2px;
+    bottom: -14px;
+    z-index: 2;
+    fill: var(--c-text-1);
+    stroke: var(--c-bg);
+    stroke-width: 1;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .hiw-cfg__rule {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+  }
+  .hiw-cfg__rule-a { opacity: 0; }
+  .hiw-cfg__reward {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--r-full, 999px);
+    background: color-mix(in srgb, var(--hiw-accent) 16%, transparent);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .hiw-cfg__reward svg { color: var(--hiw-accent); }
+
+  /* Paso 2: celular con la tarjeta */
+  .hiw-phone {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    width: min(100%, 236px);
+    margin: 0 auto;
+    padding: 1.375rem 0.75rem 0.75rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 26px;
+    background: rgb(var(--ink-rgb) / 0.02);
+    overflow: hidden;
+  }
+  .hiw-phone::before {
+    content: '';
+    position: absolute;
+    top: 9px;
+    left: 50%;
+    width: 44px;
+    height: 4px;
+    border-radius: var(--r-full, 999px);
+    background: var(--c-border-strong);
+    transform: translateX(-50%);
+  }
+  .hiw-consent {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--c-text-2);
+  }
+  .hiw-check {
+    position: relative;
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 4px;
+  }
+  .hiw-check__on {
+    position: absolute;
+    inset: -1px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: var(--hiw-accent);
+    color: var(--c-bg);
+  }
+  .hiw-wbtns {
+    display: grid;
+    gap: 0.375rem;
+  }
+  .hiw-wbtn {
+    position: relative;
+    display: block;
+    padding: 0.4375rem 0.5rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .hiw-wbtn--apple::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border: 1px solid var(--hiw-accent);
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--hiw-accent) 18%, transparent);
+    opacity: 0;
+  }
+  .hiw-pass {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name ok'
+      'sub qr'
+      'row qr';
+    align-items: center;
+    gap: 0.25rem 0.625rem;
+    margin-top: auto;
+    padding: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--hiw-accent) 40%, transparent);
+    border-radius: 12px;
+    background: linear-gradient(150deg, color-mix(in srgb, var(--hiw-accent) 28%, var(--c-bg)), var(--c-bg) 85%);
+  }
+  .hiw-pass__name { grid-area: name; font-size: 0.8125rem; font-weight: 600; }
+  .hiw-pass__ok {
+    grid-area: ok;
+    justify-self: end;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--hiw-accent);
+    color: var(--c-bg);
+  }
+  .hiw-pass__sub { grid-area: sub; font-size: 0.75rem; color: var(--c-text-2); }
+  .hiw-pass__row { grid-area: row; font-size: 0.75rem; }
+  .hiw-pass__qr { grid-area: qr; fill: var(--c-bg); }
+  .hiw-qr__bg { fill: var(--c-text-1); }
+
+  /* Paso 3: caja (escaneo y canje) */
+  .hiw-pos {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .hiw-scan {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+  }
+  .hiw-qr {
+    position: relative;
+    flex: none;
+    padding: 7px;
+    border-radius: 10px;
+    background: var(--c-text-1);
+    overflow: hidden;
+  }
+  .hiw-qr svg { display: block; fill: var(--c-bg); }
+  .hiw-qr__sweep {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--hiw-accent);
+    opacity: 0;
+  }
+  .hiw-scan__info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+  .hiw-scan__status { font-weight: 600; }
+  .hiw-scan__a { opacity: 0; }
+  .hiw-plus {
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--r-full, 999px);
+    background: color-mix(in srgb, var(--hiw-accent) 16%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--hiw-accent);
+  }
+  .hiw-saldo { color: var(--c-text-2); }
+  .hiw-saldo .hiw-mono { color: var(--c-text-1); }
+  .hiw-count { display: inline-block; }
+  .hiw-mini {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--hiw-accent) 35%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--hiw-accent) 10%, transparent);
+    font-size: 0.75rem;
+  }
+  .hiw-redeem {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.625rem;
+    margin-top: auto;
+  }
+  .hiw-redeem__btn {
+    padding: 0.375rem 0.875rem;
+    border-radius: 8px;
+    background: var(--c-text-1);
+    color: var(--c-bg);
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0;
+  }
+  .hiw-redeem__done {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--accent-2) 50%, transparent);
+    border-radius: var(--r-full, 999px);
+    background: color-mix(in srgb, var(--accent-2) 14%, transparent);
+    color: var(--accent-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  /* ---- Micro-animaciones de la viñeta viva (D = --hiw-dur del paso) ---- */
+  /* Paso 1 */
+  .hiw[data-js] .is-live .hiw-cfg__swatch { animation: hiw-pop 400ms var(--hiw-ease) both; }
+  .hiw[data-js] .is-live .hiw-cursor { animation: hiw-cursor var(--hiw-dur) ease-in-out both; }
+  .hiw[data-js] .is-live .hiw-chip--compra .hiw-chip__on { animation: hiw-out 150ms ease calc(var(--hiw-dur) * 0.43) both; }
+  .hiw[data-js] .is-live .hiw-chip--sellos .hiw-chip__on { animation: hiw-fade 150ms ease calc(var(--hiw-dur) * 0.43) both; }
+  .hiw[data-js] .is-live .hiw-cfg__rule-a { animation: hiw-out 250ms ease calc(var(--hiw-dur) * 0.47) both; }
+  .hiw[data-js] .is-live .hiw-cfg__rule-b { animation: hiw-in 350ms var(--hiw-ease) calc(var(--hiw-dur) * 0.5) both; }
+  .hiw[data-js] .is-live .hiw-cfg__reward { animation: hiw-pop 400ms var(--hiw-ease) calc(var(--hiw-dur) * 0.64) both; }
+  /* Paso 2 */
+  .hiw[data-js] .is-live .hiw-check__on { animation: hiw-pop 300ms var(--hiw-ease) calc(var(--hiw-dur) * 0.06) both; }
+  .hiw[data-js] .is-live .hiw-wbtn--apple { animation: hiw-press 300ms ease calc(var(--hiw-dur) * 0.26) both; }
+  .hiw[data-js] .is-live .hiw-wbtn--apple::after { animation: hiw-flash 900ms ease calc(var(--hiw-dur) * 0.26) both; }
+  .hiw[data-js] .is-live .hiw-pass { animation: hiw-slide 800ms cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--hiw-dur) * 0.36) both; }
+  .hiw[data-js] .is-live .hiw-pass__ok { animation: hiw-pop 350ms var(--hiw-ease) calc(var(--hiw-dur) * 0.7) both; }
+  /* Paso 3 */
+  .hiw[data-js] .is-live .hiw-qr__sweep { animation: hiw-sweep calc(var(--hiw-dur) * 0.3) ease-in-out both; }
+  .hiw[data-js] .is-live .hiw-scan__a { animation: hiw-out 200ms ease calc(var(--hiw-dur) * 0.3) both; }
+  .hiw[data-js] .is-live .hiw-scan__b { animation: hiw-in 350ms var(--hiw-ease) calc(var(--hiw-dur) * 0.32) both; }
+  .hiw[data-js] .is-live .hiw-plus { animation: hiw-pop 350ms var(--hiw-ease) calc(var(--hiw-dur) * 0.38) both; }
+  .hiw[data-js] .is-live .hiw-count { animation: hiw-bump 400ms ease calc(var(--hiw-dur) * 0.46) both; }
+  .hiw[data-js] .is-live .hiw-redeem { animation: hiw-dim 300ms ease calc(var(--hiw-dur) * 0.56) both; }
+  .hiw[data-js] .is-live .hiw-redeem__prize { animation: hiw-in 400ms var(--hiw-ease) calc(var(--hiw-dur) * 0.6) both; }
+  .hiw[data-js] .is-live .hiw-redeem__btn {
+    animation:
+      hiw-press 250ms ease calc(var(--hiw-dur) * 0.72) both,
+      hiw-out 200ms ease calc(var(--hiw-dur) * 0.79) both;
+  }
+  .hiw[data-js] .is-live .hiw-redeem__done { animation: hiw-pop 350ms var(--hiw-ease) calc(var(--hiw-dur) * 0.8) both; }
+
+  /* Pausa fuera de pantalla o con la pestaña oculta. */
+  .hiw[data-hiw-paused] *,
+  .hiw[data-hiw-paused] *::before,
+  .hiw[data-hiw-paused] *::after { animation-play-state: paused; }
+
+  @keyframes hiw-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes hiw-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes hiw-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes hiw-pop {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes hiw-press {
+    0%, 100% { transform: none; }
+    40% { transform: scale(0.94); }
+  }
+  @keyframes hiw-bump {
+    0%, 100% { transform: none; }
+    40% { transform: scale(1.3); }
+  }
+  @keyframes hiw-flash {
+    0%, 100% { opacity: 0; }
+    30% { opacity: 1; }
+  }
+  @keyframes hiw-dim {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
+  }
+  @keyframes hiw-slide {
+    from { opacity: 0; transform: translateY(115%); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes hiw-cursor {
+    0% { opacity: 0; transform: translate(-88px, 26px); }
+    10% { opacity: 1; transform: translate(-88px, 26px); }
+    38% { transform: translate(0, 0); }
+    42% { transform: translate(0, 0) scale(0.85); }
+    46% { transform: translate(0, 0) scale(1); }
+    80% { opacity: 1; transform: translate(0, 0); }
+    92%, 100% { opacity: 0; transform: translate(0, 0); }
+  }
+  @keyframes hiw-sweep {
+    0% { opacity: 0; transform: translateY(0); }
+    8% { opacity: 1; }
+    50% { transform: translateY(68px); }
+    92% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(0); }
+  }
+  @keyframes hiw-ring {
+    from { opacity: 0.7; transform: scale(1); }
+    to { opacity: 0; transform: scale(1.9); }
+  }
+
+  /* ---- Tablet (640–1023): zigzag con espina central ---- */
+  @media (min-width: 640px) {
+    .hiw {
+      --hiw-mode: wave;
+      --hiw-dot: 32px;
+    }
+    .hiw__steps { gap: 3.5rem; }
+    .hiw:not([data-js]) .hiw__steps::before { left: calc(50% - 1px); }
+    .hiw__step {
+      grid-template-columns: minmax(0, 1fr) 4rem minmax(0, 1fr);
+      grid-template-areas: 'vis marker text';
+      column-gap: 0;
+      row-gap: 0;
+    }
+    .hiw__step:nth-child(even) { grid-template-areas: 'text marker vis'; }
+    .hiw__marker { justify-self: center; }
+    .hiw__text { padding-top: 0.25rem; }
+  }
+
+  /* ---- Escritorio (≥1024): 3 columnas escalonadas ---- */
+  @media (min-width: 1024px) {
+    .hiw { --hiw-mode: h; }
+    .hiw:not([data-js]) .hiw__steps::before { display: none; }
+    .hiw__steps {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: start;
+      gap: 2rem;
+    }
+    .hiw__step,
+    .hiw__step:nth-child(even) {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        'marker'
+        'vis'
+        'text';
+    }
+    .hiw__marker {
+      justify-self: start;
+      margin-bottom: 1.75rem;
+    }
+    .hiw__text { padding-top: 1.5rem; }
+    .hiw__step-title { font-size: 1.375rem; }
+    .hiw__step:nth-child(2) { margin-top: 1.25rem; }
+    .hiw__step:nth-child(3) { margin-top: 2.5rem; }
+  }
+
+  /* ---- ≥1280: contenedor 1280 y el hilo sangra a todo el ancho ---- */
+  @media (min-width: 1280px) {
+    .hiw { --hiw-bleed: 1; }
+    .hiw__inner { max-width: 1280px; }
+    .hiw__steps { gap: 3rem; }
+    .hiw__step:nth-child(2) { margin-top: 2.5rem; }
+    .hiw__step:nth-child(3) { margin-top: 5rem; }
+    .hiw__thread {
+      left: calc(50% - 50vw);
+      width: 100vw;
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+      mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hiw *,
+    .hiw *::before,
+    .hiw *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+</style>

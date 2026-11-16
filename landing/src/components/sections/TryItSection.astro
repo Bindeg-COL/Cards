@@ -1,0 +1,2162 @@
+---
+/**
+ * TryItSection — sección "Pruébalo" (L4j, decisión 006; diseno.md "Visual — L4j").
+ *
+ * Configurador ilustrativo de la tarjeta: el visitante elige tipo de negocio, logo,
+ * nombre y paleta, y ve el resultado en dos tarjetas apiladas (estilo Apple Wallet y
+ * estilo Google Wallet, solo con sus nombres en texto). "Simular escaneo" recorre las
+ * fases barrido del QR → sello que cae → aviso "+1 sello" → dígitos que ruedan.
+ * Textos de contenido/landing.md ("Pruébalo"); hex de las paletas, del diseño.
+ * Sin CTA de piloto (regla 5 de diseno.md).
+ *
+ * Datos: cada preset y cada paleta viajan como data-* en su radio (sin JSON ni
+ * HTML inyectado). Iconos: <symbol> propios (24px, trazo 1.75) usados con <use>.
+ *
+ * Seguridad (decisión 006, Ley 1581): el logo propio se lee solo en el navegador
+ * con URL.createObjectURL. Se valida MIME (PNG, JPG, WebP; nunca SVG) y tamaño
+ * (≤ 1 MB) antes de usarlo, se comprueba que decodifique y la URL anterior se revoca
+ * al reemplazar, quitar o restaurar. Este componente no hace ninguna petición de red.
+ *
+ * Sin JS: preview estática (Restaurante, 5 de 6), controles deshabilitados y el
+ * aviso del contenido; sin leyendas. Con reduced motion: sin inclinación, flotación
+ * ni caída; los cambios son instantáneos.
+ *
+ * Rendimiento: solo transform y opacity; rAF del tilt y animaciones en pausa fuera
+ * de pantalla y con la pestaña oculta; will-change solo mientras dura el tilt.
+ *
+ * @param {string} id - id de la sección (ancla). El h2 usa `${id}-titulo`.
+ * @param {string} class - Clases extra para la sección.
+ */
+interface Props {
+  id?: string;
+  class?: string;
+}
+
+const { id = 'pruebalo', class: className = '' } = Astro.props;
+const titleId = `${id}-titulo`;
+const uid = (s: string) => `${id}-${s}`;
+
+// Presets (contenido/landing.md). Meta y arranque: arranque = meta − 2.
+const presets = [
+  { key: 'bindeg', label: 'Bindeg', name: 'Bindeg', goal: 6, prize: 'Tu recompensa', phrase: 'tu recompensa', done: '¡Tarjeta completa! Aquí iría tu premio.', palette: 'crema', logo: 'bindeg', icon: 'sello' },
+  { key: 'cafe', label: 'Café', name: 'Café Don Aníbal', goal: 8, prize: 'Café gratis', phrase: 'tu café gratis', done: '¡Tarjeta completa! Tu café gratis te espera.', palette: 'tostado', logo: 'icon', icon: 'cafe' },
+  { key: 'barberia', label: 'Barbería', name: 'Barbería La Navaja', goal: 10, prize: 'Corte gratis', phrase: 'tu corte gratis', done: '¡Tarjeta completa! Tu próximo corte va por la casa.', palette: 'guayaba', logo: 'icon', icon: 'barberia' },
+  { key: 'restaurante', label: 'Restaurante', name: 'Sazón del Guayabo', goal: 6, prize: 'Postre gratis', phrase: 'tu postre gratis', done: '¡Premio desbloqueado! Tu postre va por la casa.', palette: 'crema', logo: 'icon', icon: 'restaurante' },
+  { key: 'autolavado', label: 'Autolavado y taller', name: 'Autolavado Rueda Libre', goal: 8, prize: 'Lavado gratis', phrase: 'tu lavado gratis', done: '¡Tarjeta completa! Tu próximo lavado va por la casa.', palette: 'cielo', logo: 'icon', icon: 'autolavado' },
+] as const;
+
+// Paletas: nombres del contenido, hex del diseño. onAccent = texto sobre el acento
+// (≥ 4.5:1); glyph = icono del sello sobre el acento (≥ 3:1, gráfico).
+const palettes = [
+  { key: 'brasa', name: 'Brasa', bg: '#141414', accent: '#FF5A2B', ink: '#FFFFFF', onAccent: '#141414', glyph: '#FFFFFF' },
+  { key: 'crema', name: 'Crema Bindeg', bg: '#F1ECE2', accent: '#EE4A17', ink: '#141414', onAccent: '#141414', glyph: '#FFFFFF' },
+  { key: 'electrico', name: 'Eléctrico', bg: '#2B1F8F', accent: '#D4F23A', ink: '#FFFFFF', onAccent: '#141414', glyph: '#141414' },
+  { key: 'cielo', name: 'Cielo', bg: '#0F2A5C', accent: '#5CA8FF', ink: '#FFFFFF', onAccent: '#141414', glyph: '#141414' },
+  { key: 'selva', name: 'Selva', bg: '#0E3B2C', accent: '#4FE3AE', ink: '#FFFFFF', onAccent: '#141414', glyph: '#141414' },
+  { key: 'guayaba', name: 'Guayaba', bg: '#1A0D14', accent: '#FF4D85', ink: '#FFFFFF', onAccent: '#141414', glyph: '#FFFFFF' },
+  { key: 'tiza', name: 'Tiza', bg: '#F4F4F2', accent: '#141414', ink: '#141414', onAccent: '#FFFFFF', glyph: '#FFFFFF' },
+  { key: 'tostado', name: 'Tostado', bg: '#E9DCC8', accent: '#A8401F', ink: '#1A1A1A', onAccent: '#FFFFFF', glyph: '#FFFFFF' },
+] as const;
+
+// Estado estático (sin JS y antes de que corra el script): el ejemplo del contenido.
+const initial = presets[3];
+const initialPalette = palettes.find((p) => p.key === initial.palette)!;
+const staticCount = 5;
+const MAX_STAMPS = 10;
+const NAME_MAX = 28;
+const paletteVars = (p: (typeof palettes)[number]) =>
+  `--try-bg:${p.bg};--try-accent:${p.accent};--try-ink:${p.ink};--try-on-accent:${p.onAccent};--try-glyph:${p.glyph}`;
+const colsFor = (goal: number) => (goal <= 6 ? 3 : goal / 2);
+
+// QR genérico 21×21 dibujado (no codifica nada): tres buscadores y módulos pseudoaleatorios.
+const QR = 21;
+const qrPath = (() => {
+  let seed = 0x5eed;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const finder = (x: number, y: number) => x < 8 && y < 8;
+  const inFinder = (x: number, y: number) => finder(x, y) || finder(QR - 1 - x, y) || finder(x, QR - 1 - y);
+  let d = '';
+  for (let y = 0; y < QR; y++) {
+    for (let x = 0; x < QR; x++) {
+      if (inFinder(x, y)) continue;
+      if (rand() > 0.52) d += `M${x} ${y}h1v1h-1z`;
+    }
+  }
+  for (const [fx, fy] of [[0, 0], [QR - 7, 0], [0, QR - 7]]) {
+    d += `M${fx} ${fy}h7v7h-7zM${fx + 1} ${fy + 1}v5h5v-5zM${fx + 2} ${fy + 2}h3v3h-3z`;
+  }
+  return d;
+})();
+
+const cards = [
+  { side: 'apple', label: 'Apple Wallet', other: 'Google Wallet' },
+  { side: 'google', label: 'Google Wallet', other: 'Apple Wallet' },
+] as const;
+
+const legends = ['Escaneas el QR', 'El sello cae en la tarjeta', 'Tu cliente lo ve en su pase'];
+---
+
+<section id={id} class:list={['try', className]} aria-labelledby={titleId} data-try>
+  <!-- Iconos propios (24px, trazo 1.75), sin marcas. -->
+  <svg class="try-sprite" aria-hidden="true" focusable="false">
+    <symbol id={uid('i-sello')} viewBox="0 0 24 24"><path d="M12 3.6l2.5 5 5.5.8-4 3.9.95 5.5L12 16.2l-4.95 2.6.95-5.5-4-3.9 5.5-.8z" /></symbol>
+    <symbol id={uid('i-cafe')} viewBox="0 0 24 24"><path d="M4.5 9.5h11.5v4.25a5 5 0 0 1-5 5h-1.5a5 5 0 0 1-5-5zM16 10.5h1.25a2.75 2.75 0 0 1 0 5.5H16M8.5 3.5c-.7.9-.7 2 0 3M12 3.5c-.7.9-.7 2 0 3M4 21h13" /></symbol>
+    <symbol id={uid('i-barberia')} viewBox="0 0 24 24"><circle cx="6.5" cy="6.5" r="2.75" /><circle cx="6.5" cy="17.5" r="2.75" /><path d="M8.6 8.3L20 17.5M8.6 15.7L20 6.5M13.2 12l.01 0" /></symbol>
+    <symbol id={uid('i-restaurante')} viewBox="0 0 24 24"><circle cx="12.25" cy="12" r="5" /><circle cx="12.25" cy="12" r="2.25" /><path d="M3.25 4v5a1.5 1.5 0 0 0 3 0V4M4.75 4v16M20.75 4c-1.5 1-2.25 3-2.25 6v2h2.25v8" /></symbol>
+    <symbol id={uid('i-autolavado')} viewBox="0 0 24 24"><path d="M12 3.25S5.75 10 5.75 14.25a6.25 6.25 0 0 0 12.5 0C18.25 10 12 3.25 12 3.25zM9.25 14.5a2.75 2.75 0 0 0 2.25 2.6" /></symbol>
+  </svg>
+
+  <div class="try__inner">
+    <div class="try__grid">
+      <header class="try__head">
+        <p class="try__eyebrow">Pruébalo</p>
+        <h2 id={titleId} class="try__title">Mira cómo quedaría la tarjeta de tu negocio</h2>
+        <p class="try__sub">
+          Elige tu tipo de negocio, pon tu logo y tus colores, y simula un escaneo como lo haría tu cajero. Es solo una muestra.
+        </p>
+      </header>
+
+      <!-- ===== Preview ===== -->
+      <div class="try__stage" data-try-stage>
+        <div class="try-orbit" aria-hidden="true"></div>
+
+        <div class="try-chip try-chip--l" data-try-par="10">
+          <span class="try-chip__in">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            Sin app que instalar
+          </span>
+        </div>
+        <div class="try-chip try-chip--r" data-try-par="16">
+          <span class="try-chip__in">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"><path d="M2.75 12S6.25 5.75 12 5.75 21.25 12 21.25 12 17.75 18.25 12 18.25 2.75 12 2.75 12z" /><circle cx="12" cy="12" r="2.75" /></svg>
+            Saldo a la vista en el pase
+          </span>
+        </div>
+
+        <div class="try-fit" data-try-fit>
+          <div class="try-stack" data-try-stack style={paletteVars(initialPalette)}>
+            <div class="try-tilt" data-try-tilt>
+              {cards.map((c) => (
+                <div class="try-card" data-side={c.side} data-pos={c.side === 'apple' ? 'front' : 'back'} data-try-card={c.side}>
+                  <span class="try-card__label" aria-hidden="true">{c.label}</span>
+                  <div
+                    class:list={['try-face', `try-face--${c.side}`]}
+                    style={`--try-cols:${colsFor(initial.goal)}`}
+                    role="group"
+                    aria-label={`Tarjeta estilo ${c.label}`}
+                    aria-hidden={c.side === 'google' ? 'true' : undefined}
+                    data-try-face
+                  >
+                    {c.side === 'apple' ? (
+                      <>
+                        <div class="try-face__head">
+                          <span class="try-logo" data-mode={initial.logo} data-try-logo>
+                            <span class="try-logo__iso"><img src="/brand/bindeg-logo-alpha.png" alt="" width="1140" height="290" decoding="async" loading="lazy" /></span>
+                            <span class="try-logo__initial" data-try-initial>{initial.name.charAt(0)}</span>
+                            <svg class="try-logo__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href={`#${uid(`i-${initial.icon}`)}`} data-try-use /></svg>
+                            <img class="try-logo__img" alt="" data-try-custom />
+                          </span>
+                          <span class="try-face__name" data-try-name>{initial.name}</span>
+                          <span class="try-face__member">
+                            <span class="try-k">Miembro N.º</span>
+                            <span class="try-mono try-face__num">0342</span>
+                          </span>
+                        </div>
+                        <div class="try-stamps" aria-hidden="true" data-try-stamps>
+                          {Array.from({ length: MAX_STAMPS }, (_, i) => (
+                            <span class="try-stamp" data-filled={i < staticCount ? '' : undefined} hidden={i >= initial.goal}>
+                              <svg viewBox="0 0 24 24" focusable="false"><use href={`#${uid(`i-${initial.icon}`)}`} data-try-use /></svg>
+                            </span>
+                          ))}
+                          <span class="try-ready" data-try-ready>Premio listo</span>
+                        </div>
+                        <dl class="try-fields try-fields--3">
+                          <div><dt class="try-k">Tus sellos</dt><dd class="try-v"><span class="try-roll" data-try-count>{staticCount}</span>/<span data-try-goal>{initial.goal}</span></dd></div>
+                          <div><dt class="try-k">Te faltan</dt><dd class="try-v"><span class="try-roll" data-try-left>{initial.goal - staticCount}</span></dd></div>
+                          <div class="try-fields__end"><dt class="try-k">Tu premio</dt><dd class="try-v" data-try-prize>{initial.prize}</dd></div>
+                        </dl>
+                      </>
+                    ) : (
+                      <>
+                        <div class="try-face__head try-face__head--g">
+                          <span class="try-logo" data-mode={initial.logo} data-try-logo>
+                            <span class="try-logo__iso"><img src="/brand/bindeg-logo-alpha.png" alt="" width="1140" height="290" decoding="async" loading="lazy" /></span>
+                            <span class="try-logo__initial" data-try-initial>{initial.name.charAt(0)}</span>
+                            <svg class="try-logo__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href={`#${uid(`i-${initial.icon}`)}`} data-try-use /></svg>
+                            <img class="try-logo__img" alt="" data-try-custom />
+                          </span>
+                          <span class="try-face__name" data-try-name>{initial.name}</span>
+                        </div>
+                        <p class="try-face__title">Tarjeta de sellos</p>
+                        <dl class="try-fields try-fields--2">
+                          <div><dt class="try-k try-k--g">Sellos</dt><dd class="try-v"><span class="try-roll" data-try-count>{staticCount}</span>/<span data-try-goal>{initial.goal}</span></dd></div>
+                          <div><dt class="try-k try-k--g">Premio</dt><dd class="try-v" data-try-prize>{initial.prize}</dd></div>
+                        </dl>
+                      </>
+                    )}
+
+                    <div class="try-qr">
+                      <svg viewBox={`-1 -1 ${QR + 2} ${QR + 2}`} shape-rendering="crispEdges" role="img" aria-label="Código QR de ejemplo, no se puede escanear" focusable="false">
+                        <path d={qrPath} />
+                      </svg>
+                      <span class="try-qr__sweep" aria-hidden="true"></span>
+                    </div>
+
+                    {c.side === 'google' && (
+                      <div class="try-stamps try-stamps--band" aria-hidden="true" data-try-stamps>
+                        {Array.from({ length: MAX_STAMPS }, (_, i) => (
+                          <span class="try-stamp" data-filled={i < staticCount ? '' : undefined} hidden={i >= initial.goal}>
+                            <svg viewBox="0 0 24 24" focusable="false"><use href={`#${uid(`i-${initial.icon}`)}`} data-try-use /></svg>
+                          </span>
+                        ))}
+                        <span class="try-ready" data-try-ready>Premio listo</span>
+                      </div>
+                    )}
+
+                    <p class="try-sr" data-try-sr>{`${staticCount} de ${initial.goal} sellos`}</p>
+                    <span class="try-glare" aria-hidden="true"></span>
+                  </div>
+                  <button type="button" class="try-card__swap" aria-label={`Ver la tarjeta de ${c.label} al frente`} hidden={c.side === 'apple'} disabled data-try-swap={c.side}></button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div class="try-under">
+          <div class="try-toast" aria-hidden="true" data-try-toast>
+            <span class="try-toast__icon"><svg viewBox="0 0 24 24" focusable="false"><use href={`#${uid(`i-${initial.icon}`)}`} data-try-use /></svg></span>
+            <span class="try-toast__text">
+              <span class="try-toast__name" data-try-toast-name>{initial.name}</span>
+              <span class="try-toast__msg" data-try-toast-msg>{`Te falta 1 para ${initial.phrase}`}</span>
+            </span>
+            <span class="try-toast__plus">+1 sello</span>
+          </div>
+          <p class="try-toastcap">Así podría verse el aviso en el celular de tu cliente.</p>
+          <div class="try-stage__foot">
+          <div class="try-seg" role="group" aria-label="Tarjeta al frente">
+            <button type="button" class="try-seg__btn" aria-pressed="true" disabled data-try-seg="apple">Apple Wallet</button>
+            <button type="button" class="try-seg__btn" aria-pressed="false" disabled data-try-seg="google">Google Wallet</button>
+          </div>
+          <p class="try-hint">Toca la tarjeta de atrás para verla al frente.</p>
+          <span class="try-tag">Ejemplo ilustrativo</span>
+          </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Panel ===== -->
+      <div class="try__panel" data-try-panel>
+        <p class="try__nojs">
+          Esta muestra interactiva necesita JavaScript. Mientras tanto, mira un ejemplo: Sazón del Guayabo, 5 de 6 sellos, premio postre gratis.
+        </p>
+
+        <div class="try-col">
+          <div class="try-field">
+            <p class="try-label" id={uid('tipo-label')}>Tipo de negocio</p>
+            <div class="try-types" role="radiogroup" aria-labelledby={uid('tipo-label')} data-try-types>
+              {presets.map((p) => (
+                <button
+                  type="button"
+                  role="radio"
+                  class="try-type"
+                  aria-checked={p.key === initial.key ? 'true' : 'false'}
+                  tabindex={p.key === initial.key ? 0 : -1}
+                  disabled
+                  data-key={p.key}
+                  data-label={p.label}
+                  data-name={p.name}
+                  data-goal={p.goal}
+                  data-prize={p.prize}
+                  data-phrase={p.phrase}
+                  data-done={p.done}
+                  data-palette={p.palette}
+                  data-logo={p.logo}
+                  data-icon={p.icon}
+                >
+                  {p.key === 'bindeg' ? (
+                    <span class="try-type__iso" aria-hidden="true"><img src="/brand/bindeg-logo-alpha.png" alt="" width="1140" height="290" decoding="async" loading="lazy" /></span>
+                  ) : (
+                    <svg class="try-type__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href={`#${uid(`i-${p.icon}`)}`} /></svg>
+                  )}
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div class="try-field">
+            <p class="try-label" id={uid('logo-label')}>Logo</p>
+            <div class="try-logos">
+              <div class="try-logos__group" role="radiogroup" aria-labelledby={uid('logo-label')} data-try-logos>
+                <button type="button" role="radio" class="try-lopt" aria-checked="false" tabindex="-1" disabled aria-label="Usar la marca de Bindeg" data-key="bindeg">
+                  <span class="try-lopt__iso" aria-hidden="true"><img src="/brand/bindeg-logo-alpha.png" alt="" width="1140" height="290" decoding="async" loading="lazy" /></span>
+                </button>
+                <button type="button" role="radio" class="try-lopt" aria-checked="false" tabindex="-1" disabled aria-label="Usar la inicial de tu negocio" data-key="initial">
+                  <span class="try-lopt__initial" aria-hidden="true" data-try-initial>{initial.name.charAt(0)}</span>
+                </button>
+                <button type="button" role="radio" class="try-lopt" aria-checked="true" tabindex="0" disabled aria-label={`Usar el ícono de ${initial.label.toLowerCase()}`} data-key="icon" data-try-icon-opt>
+                  <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><use href={`#${uid(`i-${initial.icon}`)}`} data-try-use /></svg>
+                </button>
+              </div>
+              <input
+                type="file"
+                id={uid('logo-file')}
+                class="try-file"
+                accept="image/png,image/jpeg,image/webp"
+                tabindex="-1"
+                aria-hidden="true"
+                disabled
+                data-try-file
+              />
+              <button
+                type="button"
+                class="try-lopt try-lopt--mine"
+                aria-label="Usar mi propio logo"
+                aria-pressed="false"
+                aria-describedby={`${uid('logo-help')} ${uid('logo-error')}`}
+                disabled
+                data-try-mine
+              >
+                <img class="try-lopt__thumb" alt="" data-try-custom />
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><circle cx="9" cy="9.75" r="1.75" /><path d="M20.5 15.5l-4.5-4.25-7.5 8.25" /></svg>
+                <span>Mi logo</span>
+              </button>
+            </div>
+            <p class="try-help" id={uid('logo-help')}>PNG, JPG o WebP de hasta 1 MB. Tu logo se queda en tu navegador: no se envía a ningún servidor.</p>
+            <p class="try-error" id={uid('logo-error')} role="alert" data-try-error></p>
+            <p class="try-ok" hidden data-try-ok>
+              Logo cargado.
+              <button type="button" class="try-link" disabled data-try-remove>Quitar logo</button>
+            </p>
+          </div>
+        </div>
+
+        <div class="try-col">
+          <div class="try-field">
+            <label class="try-label" for={uid('nombre')}>Nombre de tu negocio</label>
+            <div class="try-input">
+              <input
+                id={uid('nombre')}
+                type="text"
+                maxlength={NAME_MAX}
+                autocomplete="organization"
+                spellcheck="false"
+                placeholder={`Ej.: ${initial.name}`}
+                aria-describedby={uid('nombre-help')}
+                disabled
+                data-try-name-input
+              />
+              <span class="try-input__count try-mono" aria-hidden="true" data-try-counter>0/{NAME_MAX}</span>
+            </div>
+            <p class="try-help" id={uid('nombre-help')} data-try-name-help>Hasta 28 caracteres.</p>
+          </div>
+
+          <div class="try-field">
+            <p class="try-label" id={uid('paleta-label')}>Paleta · <span class="try-label__val" data-try-palette-name>{initialPalette.name}</span></p>
+            <div class="try-pals" role="radiogroup" aria-labelledby={uid('paleta-label')} data-try-pals>
+              {palettes.map((p) => (
+                <button
+                  type="button"
+                  role="radio"
+                  class="try-pal"
+                  aria-checked={p.key === initialPalette.key ? 'true' : 'false'}
+                  tabindex={p.key === initialPalette.key ? 0 : -1}
+                  aria-label={`Paleta ${p.name}`}
+                  disabled
+                  style={`--sw-bg:${p.bg};--sw-ac:${p.accent}`}
+                  data-key={p.key}
+                  data-name={p.name}
+                  data-bg={p.bg}
+                  data-accent={p.accent}
+                  data-ink={p.ink}
+                  data-on-accent={p.onAccent}
+                  data-glyph={p.glyph}
+                >
+                  <span class="try-pal__sw" aria-hidden="true"></span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div class="try-actions">
+          <button type="button" class="try-btn try-btn--primary" disabled data-try-scan>
+            <span data-try-scan-label>Simular escaneo</span>
+            <span class="try-btn__arrow" aria-hidden="true" data-try-scan-arrow>→</span>
+          </button>
+          <button type="button" class="try-btn try-btn--ghost" title="Vuelve a la tarjeta de ejemplo de Bindeg" disabled data-try-reset>Restaurar Bindeg</button>
+        </div>
+      </div>
+    </div>
+
+    <ol class="try-legend" role="list" data-try-legend>
+      {legends.map((text, i) => (
+        <li class="try-legend__item" data-try-phase={i + 1}>
+          <span class="try-legend__dot try-mono" aria-hidden="true">{i + 1}</span>
+          <span class="try-legend__text">{text}</span>
+          {i < legends.length - 1 && (
+            <span class="try-legend__line" aria-hidden="true"><span class="try-legend__fill"></span></span>
+          )}
+        </li>
+      ))}
+    </ol>
+
+    <p class="try-note">Ejemplo ilustrativo. Los negocios, nombres y saldos son ficticios, y el diseño final de tu tarjeta puede variar.</p>
+  </div>
+
+  <p class="try-sr" role="status" aria-live="polite" data-try-live></p>
+</section>
+
+<script>
+  // Tiempos de la simulación (ms).
+  const SWEEP_MS = 700;
+  const DROP_MS = 520;
+  const TOAST_MS = 2400;
+  const READY_TO_RESTART_MS = 2500;
+  // Inclinación máxima (grados) y suavizado del lerp por frame.
+  const TILT_MAX = 8;
+  const LERP = 0.12;
+  // Logo propio: solo rasterizados y como mucho 1 MB.
+  const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+  const LOGO_MAX = 1048576;
+  const NAME_MAX = 28;
+  const MSG = {
+    format: 'Ese formato no sirve. Usa una imagen PNG, JPG o WebP.',
+    size: 'Esa imagen pesa más de 1 MB. Prueba con una más liviana.',
+    read: 'No pudimos abrir esa imagen. Prueba con otra.',
+  };
+
+  type Side = 'apple' | 'google';
+  type LogoMode = 'bindeg' | 'initial' | 'icon' | 'custom';
+
+  const setup = (section: HTMLElement) => {
+    const q = <T extends Element = HTMLElement>(sel: string) => section.querySelector<T>(sel);
+    const qa = <T extends Element = HTMLElement>(sel: string) => Array.from(section.querySelectorAll<T>(sel));
+
+    const stage = q('[data-try-stage]');
+    const fit = q('[data-try-fit]');
+    const stack = q('[data-try-stack]');
+    const tilt = q('[data-try-tilt]');
+    const toast = q('[data-try-toast]');
+    const live = q('[data-try-live]');
+    const scanBtn = q<HTMLButtonElement>('[data-try-scan]');
+    const scanLabel = q('[data-try-scan-label]');
+    const scanArrow = q('[data-try-scan-arrow]');
+    const resetBtn = q<HTMLButtonElement>('[data-try-reset]');
+    const nameInput = q<HTMLInputElement>('[data-try-name-input]');
+    const counter = q('[data-try-counter]');
+    const nameHelp = q('[data-try-name-help]');
+    const fileInput = q<HTMLInputElement>('[data-try-file]');
+    const mineBtn = q<HTMLButtonElement>('[data-try-mine]');
+    const errorEl = q('[data-try-error]');
+    const okEl = q('[data-try-ok]');
+    const removeBtn = q<HTMLButtonElement>('[data-try-remove]');
+    const paletteName = q('[data-try-palette-name]');
+    const typesGroup = q('[data-try-types]');
+    const legend = q('[data-try-legend]');
+    const iconOpt = q('[data-try-icon-opt]');
+    if (!stage || !fit || !stack || !tilt || !toast || !live || !scanBtn || !scanLabel || !scanArrow || !resetBtn || !nameInput || !counter || !nameHelp || !fileInput || !mineBtn || !errorEl || !okEl || !removeBtn || !paletteName || !typesGroup || !legend || !iconOpt) return;
+
+    const typeRadios = qa<HTMLButtonElement>('[data-try-types] [role="radio"]');
+    const logoRadios = qa<HTMLButtonElement>('[data-try-logos] [role="radio"]');
+    const palRadios = qa<HTMLButtonElement>('[data-try-pals] [role="radio"]');
+    const cardEls = qa('[data-try-card]');
+    const swapBtns = qa<HTMLButtonElement>('[data-try-swap]');
+    const segBtns = qa<HTMLButtonElement>('[data-try-seg]');
+    const faces = qa('[data-try-face]');
+    const phases = qa('[data-try-phase]');
+    const iconBase = (q<SVGUseElement>('[data-try-use]')?.getAttribute('href') ?? '').replace(/i-[a-z]+$/, 'i-');
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const finePointer = window.matchMedia('(pointer: fine)');
+
+    // ---- Estado ----
+    const preset = (key: string) => typeRadios.find((r) => r.dataset.key === key) ?? typeRadios[0];
+    const palette = (key: string) => palRadios.find((r) => r.dataset.key === key) ?? palRadios[0];
+    const startOf = (goal: number) => Math.max(0, goal - 2);
+
+    let typeKey = 'restaurante';
+    let palKey = preset(typeKey).dataset.palette ?? 'crema';
+    let logoMode: LogoMode = 'icon';
+    let customUrl: string | null = null;
+    let name = '';
+    let goal = Number(preset(typeKey).dataset.goal);
+    let count = startOf(goal);
+    let front: Side = 'apple';
+    let complete = false;
+    let scanning = false;
+    let timers: number[] = [];
+
+    const p = () => preset(typeKey).dataset;
+    const displayName = () => name.trim() || p().name || '';
+    const typePhrase = () => {
+      const label = p().label ?? '';
+      return label === 'Bindeg' ? label : label.toLowerCase();
+    };
+    const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+    const later = (fn: () => void, ms: number) => {
+      timers.push(window.setTimeout(fn, ms));
+    };
+    const cancelTimers = () => {
+      timers.forEach((t) => window.clearTimeout(t));
+      timers = [];
+    };
+
+    let liveTimer = 0;
+    const announce = (text: string) => {
+      // Vaciar y volver a escribir hace que se repita aunque el texto sea igual.
+      live.textContent = '';
+      window.clearTimeout(liveTimer);
+      liveTimer = window.setTimeout(() => {
+        live.textContent = text;
+      }, 60);
+    };
+
+    const setText = (sel: string, text: string) => {
+      qa(sel).forEach((el) => {
+        if (el.textContent !== text) el.textContent = text;
+      });
+    };
+
+    // Dígitos que ruedan: el valor viejo sube y el nuevo entra desde abajo.
+    const roll = (el: HTMLElement, value: number, animate: boolean) => {
+      const next = String(value);
+      const prev = el.dataset.value ?? el.textContent ?? '';
+      el.dataset.value = next;
+      if (!animate || reduce || prev === next) {
+        el.replaceChildren(document.createTextNode(next));
+        return;
+      }
+      const out = document.createElement('span');
+      out.className = 'try-roll__out';
+      out.textContent = prev;
+      const inn = document.createElement('span');
+      inn.className = 'try-roll__in';
+      inn.textContent = next;
+      el.replaceChildren(out, inn);
+      later(() => {
+        if (el.dataset.value === next) el.replaceChildren(document.createTextNode(next));
+      }, 520);
+    };
+
+    const setChecked = (radios: HTMLButtonElement[], key: string | null) => {
+      const hasChecked = radios.some((r) => r.dataset.key === key);
+      radios.forEach((r, i) => {
+        const on = r.dataset.key === key;
+        r.setAttribute('aria-checked', on ? 'true' : 'false');
+        r.tabIndex = on || (!hasChecked && i === 0) ? 0 : -1;
+      });
+    };
+
+    // ---- Pintado ----
+    const paint = (opts: { animateCount?: boolean; dropIndex?: number } = {}) => {
+      const d = p();
+      const pal = palette(palKey).dataset;
+      const icon = d.icon ?? 'sello';
+      const nm = displayName();
+      const left = Math.max(0, goal - count);
+
+      stack.style.setProperty('--try-bg', pal.bg ?? '');
+      stack.style.setProperty('--try-accent', pal.accent ?? '');
+      stack.style.setProperty('--try-ink', pal.ink ?? '');
+      stack.style.setProperty('--try-on-accent', pal.onAccent ?? '');
+      stack.style.setProperty('--try-glyph', pal.glyph ?? '');
+      paletteName.textContent = pal.name ?? '';
+
+      setText('[data-try-name]', nm);
+      setText('[data-try-toast-name]', nm);
+      setText('[data-try-initial]', Array.from(nm)[0]?.toLocaleUpperCase('es') ?? '');
+      setText('[data-try-goal]', String(goal));
+      setText('[data-try-prize]', d.prize ?? '');
+      setText('[data-try-sr]', complete ? `${goal} de ${goal} sellos. Premio listo.` : `${count} de ${goal} sellos`);
+
+      qa<SVGUseElement>('[data-try-use]').forEach((u) => {
+        const href = `${iconBase}${icon}`;
+        if (u.getAttribute('href') !== href) u.setAttribute('href', href);
+      });
+      iconOpt.setAttribute('aria-label', `Usar el ícono de ${typePhrase()}`);
+
+      qa('[data-try-logo]').forEach((el) => {
+        el.dataset.mode = logoMode;
+      });
+
+      faces.forEach((face) => {
+        face.style.setProperty('--try-cols', String(goal <= 6 ? 3 : goal / 2));
+        face.toggleAttribute('data-complete', complete);
+        face.querySelectorAll<HTMLElement>('.try-stamp').forEach((s, i) => {
+          s.hidden = i >= goal;
+          s.toggleAttribute('data-filled', i < count);
+          s.classList.toggle('is-new', i === opts.dropIndex && !reduce);
+        });
+      });
+
+      qa('[data-try-count]').forEach((el) => roll(el, count, !!opts.animateCount));
+      qa('[data-try-left]').forEach((el) => roll(el, left, !!opts.animateCount));
+
+      nameInput.placeholder = `Ej.: ${d.name ?? ''}`;
+      const pristine = typeKey === 'bindeg' && palKey === 'crema' && logoMode === 'bindeg' && !name && count === startOf(goal) && !complete;
+      resetBtn.disabled = pristine;
+
+      setChecked(typeRadios, typeKey);
+      setChecked(palRadios, palKey);
+      setChecked(logoRadios, logoMode === 'custom' ? null : logoMode);
+      mineBtn.setAttribute('aria-pressed', logoMode === 'custom' ? 'true' : 'false');
+      mineBtn.toggleAttribute('data-has-img', logoMode === 'custom');
+      okEl.hidden = logoMode !== 'custom';
+    };
+
+    // ---- Simulación ----
+    const setPhase = (n: number) => {
+      phases.forEach((el, i) => el.toggleAttribute('data-on', i < n));
+      phases.forEach((el, i) => el.toggleAttribute('data-now', i === n - 1));
+      phases.forEach((el, i) => el.toggleAttribute('data-done', i < n - 1));
+      legend.toggleAttribute('data-running', n > 0);
+    };
+
+    const setScanUi = (mode: 'idle' | 'busy' | 'restart') => {
+      scanBtn.disabled = mode === 'busy';
+      scanBtn.toggleAttribute('aria-busy', mode === 'busy');
+      scanLabel.textContent = mode === 'busy' ? 'Escaneando…' : mode === 'restart' ? 'Empezar otra tarjeta' : 'Simular escaneo';
+      scanArrow.hidden = mode !== 'idle';
+    };
+
+    const hideToast = () => toast.removeAttribute('data-show');
+
+    const stopScan = () => {
+      cancelTimers();
+      scanning = false;
+      section.removeAttribute('data-scanning');
+      hideToast();
+      setPhase(0);
+      setScanUi(complete ? 'restart' : 'idle');
+    };
+
+    // Cualquier cambio de configuración vuelve la tarjeta al arranque del preset.
+    const restartCard = () => {
+      cancelTimers();
+      scanning = false;
+      section.removeAttribute('data-scanning');
+      hideToast();
+      setPhase(0);
+      complete = false;
+      count = startOf(goal);
+      setScanUi('idle');
+    };
+
+    const scan = () => {
+      if (scanning) return;
+      if (complete) {
+        restartCard();
+        paint();
+        announce(`Tarjeta de ${typePhrase()}: ${displayName()}, ${count} de ${goal} sellos, premio ${lowerFirst(p().prize ?? '')}.`);
+        return;
+      }
+      scanning = true;
+      setScanUi('busy');
+      hideToast();
+      setPhase(1);
+      const sweep = reduce ? 0 : SWEEP_MS;
+      if (!reduce) {
+        section.removeAttribute('data-scanning');
+        void section.offsetWidth; // reinicia la animación del barrido
+        section.setAttribute('data-scanning', '');
+      }
+
+      later(() => {
+        section.removeAttribute('data-scanning');
+        const index = count;
+        count = Math.min(goal, count + 1);
+        complete = count >= goal;
+        setPhase(2);
+        paint({ dropIndex: index });
+      }, sweep);
+
+      const toastAt = sweep + (reduce ? 0 : DROP_MS * 0.7);
+      later(() => {
+        const d = p();
+        setText('[data-try-toast-msg]', complete ? (d.done ?? '') : `Te falta 1 para ${d.phrase ?? ''}`);
+        setText('[data-try-toast-name]', displayName());
+        toast.setAttribute('data-show', '');
+        setPhase(3);
+        // Los dígitos ruedan al llegar el aviso.
+        qa('[data-try-count]').forEach((el) => roll(el, count, true));
+        qa('[data-try-left]').forEach((el) => roll(el, Math.max(0, goal - count), true));
+        announce(
+          complete
+            ? `Escaneo simulado. Tarjeta completa: ${goal} de ${goal} sellos. Premio desbloqueado: ${lowerFirst(d.prize ?? '')}.`
+            : `Escaneo simulado. Se sumó 1 sello a la tarjeta de ${displayName()}. Llevas ${count} de ${goal}. Te falta 1 para ${d.phrase ?? ''}.`,
+        );
+        later(() => {
+          hideToast();
+          setPhase(0);
+        }, TOAST_MS);
+        if (complete) {
+          later(() => {
+            scanning = false;
+            setScanUi('restart');
+          }, READY_TO_RESTART_MS);
+        } else {
+          later(() => {
+            scanning = false;
+            setScanUi('idle');
+          }, reduce ? 0 : 300);
+        }
+      }, toastAt);
+    };
+
+    // Al pintar sin animar los dígitos, el sello y el aviso quedan en su sitio.
+    const applyType = (key: string, announceIt: boolean) => {
+      typeKey = key;
+      const d = p();
+      goal = Number(d.goal) || 6;
+      palKey = d.palette ?? 'crema';
+      if (logoMode !== 'custom') logoMode = (d.logo as LogoMode) ?? 'icon';
+      restartCard();
+      paint();
+      if (announceIt) announce(`Tarjeta de ${typePhrase()}: ${displayName()}, ${count} de ${goal} sellos, premio ${lowerFirst(d.prize ?? '')}.`);
+    };
+
+    // ---- Radiogroups con roving tabindex ----
+    const radiogroup = (radios: HTMLButtonElement[], select: (key: string) => void, scroller?: HTMLElement) => {
+      const focusAt = (i: number) => {
+        const r = radios[(i + radios.length) % radios.length];
+        r.focus();
+        if (scroller) {
+          const left = r.offsetLeft - (scroller.clientWidth - r.offsetWidth) / 2;
+          scroller.scrollTo({ left, behavior: reduce ? 'auto' : 'smooth' });
+        }
+        select(r.dataset.key ?? '');
+      };
+      radios.forEach((r, i) => {
+        r.addEventListener('click', () => select(r.dataset.key ?? ''));
+        r.addEventListener('keydown', (e) => {
+          const k = e.key;
+          if (k === 'ArrowRight' || k === 'ArrowDown') focusAt(i + 1);
+          else if (k === 'ArrowLeft' || k === 'ArrowUp') focusAt(i - 1);
+          else if (k === 'Home') focusAt(0);
+          else if (k === 'End') focusAt(radios.length - 1);
+          else return;
+          e.preventDefault();
+        });
+      });
+    };
+
+    radiogroup(typeRadios, (key) => {
+      if (key && key !== typeKey) applyType(key, true);
+    }, typesGroup);
+
+    radiogroup(palRadios, (key) => {
+      if (!key || key === palKey) return;
+      palKey = key;
+      paint();
+      announce(`Paleta ${palette(key).dataset.name ?? ''} aplicada.`);
+    });
+
+    const revokeCustom = () => {
+      if (customUrl) URL.revokeObjectURL(customUrl);
+      customUrl = null;
+      qa<HTMLImageElement>('[data-try-custom]').forEach((img) => img.removeAttribute('src'));
+    };
+
+    radiogroup(logoRadios, (key) => {
+      if (!key || key === logoMode) return;
+      if (logoMode === 'custom') revokeCustom();
+      logoMode = key as LogoMode;
+      errorEl.textContent = '';
+      paint();
+    });
+
+    // ---- Logo propio (solo en el navegador, sin red) ----
+    const showError = (text: string) => {
+      errorEl.textContent = text;
+    };
+    mineBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0] ?? null;
+      fileInput.value = ''; // permite volver a elegir el mismo archivo
+      if (!file) return;
+      if (!LOGO_TYPES.includes(file.type)) return showError(MSG.format);
+      if (file.size > LOGO_MAX) return showError(MSG.size);
+      const url = URL.createObjectURL(file);
+      const probe = new Image();
+      probe.onload = () => {
+        revokeCustom();
+        customUrl = url;
+        qa<HTMLImageElement>('[data-try-custom]').forEach((img) => {
+          img.src = url;
+        });
+        logoMode = 'custom';
+        errorEl.textContent = '';
+        paint();
+        announce('Logo cargado.');
+      };
+      probe.onerror = () => {
+        URL.revokeObjectURL(url);
+        showError(MSG.read);
+      };
+      probe.src = url;
+    });
+    removeBtn.addEventListener('click', () => {
+      revokeCustom();
+      logoMode = 'initial';
+      paint();
+      announce('Logo quitado. Se usa la inicial de tu negocio.');
+      logoRadios.find((r) => r.dataset.key === 'initial')?.focus();
+    });
+    window.addEventListener('pagehide', revokeCustom);
+
+    // ---- Nombre ----
+    const syncCounter = () => {
+      const n = Array.from(nameInput.value).length;
+      counter.textContent = `${n}/${NAME_MAX}`;
+      const atLimit = nameInput.value.length >= NAME_MAX;
+      nameHelp.textContent = atLimit ? 'Máximo 28 caracteres.' : 'Hasta 28 caracteres.';
+      section.toggleAttribute('data-name-full', atLimit);
+    };
+    nameInput.addEventListener('input', () => {
+      name = nameInput.value.slice(0, NAME_MAX);
+      syncCounter();
+      paint();
+    });
+
+    // ---- Restaurar Bindeg ----
+    resetBtn.addEventListener('click', () => {
+      revokeCustom();
+      name = '';
+      nameInput.value = '';
+      syncCounter();
+      errorEl.textContent = '';
+      logoMode = 'bindeg';
+      applyType('bindeg', false);
+      announce('Tarjeta restaurada a Bindeg.');
+      scanBtn.focus();
+    });
+
+    scanBtn.addEventListener('click', scan);
+
+    // ---- Tarjeta al frente ----
+    const setFront = (side: Side, announceIt: boolean) => {
+      front = side;
+      cardEls.forEach((card) => {
+        const isFront = card.dataset.tryCard === side;
+        card.dataset.pos = isFront ? 'front' : 'back';
+        const face = card.querySelector<HTMLElement>('[data-try-face]');
+        if (isFront) face?.removeAttribute('aria-hidden');
+        else face?.setAttribute('aria-hidden', 'true');
+      });
+      swapBtns.forEach((b) => {
+        b.hidden = b.dataset.trySwap === side;
+      });
+      segBtns.forEach((b) => b.setAttribute('aria-pressed', b.dataset.trySeg === side ? 'true' : 'false'));
+      if (announceIt) announce(`Tarjeta de ${side === 'apple' ? 'Apple Wallet' : 'Google Wallet'} al frente.`);
+    };
+    swapBtns.forEach((b) =>
+      b.addEventListener('click', () => {
+        const side = b.dataset.trySwap as Side;
+        setFront(side, true);
+        // El foco no se pierde: pasa al botón de la que quedó atrás.
+        swapBtns.find((x) => !x.hidden)?.focus();
+      }),
+    );
+    segBtns.forEach((b) =>
+      b.addEventListener('click', () => {
+        const side = b.dataset.trySeg as Side;
+        if (side !== front) setFront(side, true);
+      }),
+    );
+
+    // ---- Encaje de la preview en su caja ----
+    const fitStack = () => {
+      const box = fit.getBoundingClientRect();
+      const w = stack.offsetWidth;
+      const h = stack.offsetHeight;
+      if (!box.width || !box.height || !w || !h) return;
+      const max = parseFloat(getComputedStyle(section).getPropertyValue('--try-scale-max')) || 1;
+      const reserve = parseFloat(getComputedStyle(section).getPropertyValue('--try-reserve')) || 0;
+      // La tarjeta de atrás asoma ~38% a la derecha.
+      const s = Math.max(0.5, Math.round(Math.min(max, (box.width - 8) / (w * 1.4), (box.height - reserve) / h) * 1000) / 1000);
+      const top = Math.max(0, Math.round((box.height - reserve - h * s) / 2));
+      section.style.setProperty('--try-fit', String(s));
+      section.style.setProperty('--try-top', `${top}px`);
+      section.style.setProperty('--try-under', `${Math.round(top + h * s)}px`);
+      // Centro de la tarjeta del frente respecto al centro de la caja (la pila va corrida a la izquierda).
+      section.style.setProperty('--try-shift', `${Math.round(-0.12 * w * s)}px`);
+      // Fondo de puntos centrado en la pila y chips justo encima de ella.
+      const fx = fit.offsetLeft + box.width / 2;
+      const fy = fit.offsetTop;
+      section.style.setProperty('--try-ox', `${Math.round(fx + 0.06 * w * s)}px`);
+      section.style.setProperty('--try-oy', `${Math.round(fy + top + (h * s) / 2)}px`);
+      section.style.setProperty('--try-chip-y', `${Math.max(0, Math.round(fy + top - 64))}px`);
+    };
+    let fitFrame = 0;
+    const scheduleFit = () => {
+      if (fitFrame) return;
+      fitFrame = requestAnimationFrame(() => {
+        fitFrame = 0;
+        fitStack();
+      });
+    };
+    if ('ResizeObserver' in window) new ResizeObserver(scheduleFit).observe(fit);
+    else window.addEventListener('resize', scheduleFit);
+
+    // ---- Inclinación 3D (solo puntero fino) y parallax de chips ----
+    const chips = qa('[data-try-par]');
+    let tx = 0;
+    let ty = 0;
+    let cx = 0;
+    let cy = 0;
+    let tiltFrame = 0;
+    let onScreen = !('IntersectionObserver' in window);
+    const canTilt = () => !reduce && finePointer.matches && onScreen && !document.hidden;
+
+    const applyTilt = () => {
+      tilt.style.transform = `rotateX(${(-cy * TILT_MAX).toFixed(2)}deg) rotateY(${(cx * TILT_MAX).toFixed(2)}deg)`;
+      section.style.setProperty('--try-gx', `${(cx * 30).toFixed(1)}%`);
+      section.style.setProperty('--try-gy', `${(cy * 30).toFixed(1)}%`);
+      section.style.setProperty('--try-glare', (Math.min(1, Math.hypot(cx, cy)) * 0.18).toFixed(3));
+      chips.forEach((c) => {
+        const k = Number(c.dataset.tryPar) || 10;
+        c.style.transform = `translate3d(${(cx * k).toFixed(1)}px, ${(cy * k).toFixed(1)}px, 0)`;
+      });
+    };
+    const tick = () => {
+      tiltFrame = 0;
+      cx += (tx - cx) * LERP;
+      cy += (ty - cy) * LERP;
+      const settled = Math.abs(tx - cx) < 0.002 && Math.abs(ty - cy) < 0.002;
+      if (settled) {
+        cx = tx;
+        cy = ty;
+      }
+      applyTilt();
+      if (!settled && canTilt()) tiltFrame = requestAnimationFrame(tick);
+      else stage.removeAttribute('data-tilting');
+    };
+    const kick = () => {
+      if (tiltFrame || !canTilt()) return;
+      stage.setAttribute('data-tilting', '');
+      tiltFrame = requestAnimationFrame(tick);
+    };
+    stage.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' || !canTilt()) return;
+      const r = stack.getBoundingClientRect();
+      tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
+      ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
+      kick();
+    });
+    stage.addEventListener('pointerleave', () => {
+      tx = 0;
+      ty = 0;
+      kick();
+    });
+
+    // ---- Pausa fuera de pantalla o con la pestaña oculta ----
+    const sync = () => {
+      const run = onScreen && !document.hidden;
+      section.toggleAttribute('data-try-paused', !run);
+      if (!run && tiltFrame) {
+        cancelAnimationFrame(tiltFrame);
+        tiltFrame = 0;
+        stage.removeAttribute('data-tilting');
+      }
+    };
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        for (const entry of entries) onScreen = entry.isIntersecting;
+        sync();
+      }).observe(section);
+    }
+    document.addEventListener('visibilitychange', sync);
+
+    // ---- Arranque ----
+    section.dataset.js = '';
+    if (reduce) section.dataset.tryReduced = '';
+    qa<HTMLButtonElement | HTMLInputElement>('[disabled]').forEach((el) => {
+      if (el !== resetBtn) el.disabled = false;
+    });
+    setFront('apple', false);
+    setScanUi('idle');
+    syncCounter();
+    applyType(typeKey, false);
+    fitStack();
+    sync();
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-try]').forEach(setup);
+</script>
+
+<style>
+  .try {
+    --try-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --try-scale-max: 0.8;
+    --try-fit: var(--try-scale-max);
+    --try-reserve: 56;
+    position: relative;
+    /* Recorta el fondo que sangra sin crear un contenedor de scroll (sticky sigue vivo). */
+    overflow-x: clip;
+    min-height: calc(100vh - 5rem);
+    min-height: calc(100svh - 5rem);
+    padding: clamp(3rem, 6vw, 5rem) var(--sp-6, 1.5rem) clamp(3rem, 6vw, 5rem);
+    /* L4m (decisión 008, toque de C): "Pruébalo" es una hoja crema dentro de la
+       página carbón. Se redefinen los tokens en su zona para que todo lo de dentro
+       (textos, bordes, controles) se pinte en tinta sobre crema y pase AA. */
+    color-scheme: light;
+    --c-bg: var(--cream-bg);
+    --c-bg-rgb: 241 236 226;
+    --c-surface: var(--cream-surface);
+    --c-text-1: var(--cream-ink);
+    --c-text-2: var(--cream-text-2);
+    --c-text-3: var(--cream-text-3);
+    --ink-rgb: var(--cream-ink-rgb);
+    --c-border: rgb(var(--cream-ink-rgb) / 0.12);
+    --c-border-strong: rgb(var(--cream-ink-rgb) / 0.26);
+    --c-focus: var(--accent-deep);
+    --c-danger: var(--cream-danger);
+    --c-success: var(--cream-success);
+    --try-panel: var(--cream-raise);
+    --try-shadow-rgb: 60 36 16;
+    border-radius: 28px;
+    background: var(--c-bg);
+    color: var(--c-text-1);
+  }
+  .try__inner {
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  .try-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+  }
+  .try-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .try-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Grid general (móvil primero) ---- */
+  .try__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'stage'
+      'panel';
+  }
+  .try__head { grid-area: head; }
+  .try__stage { grid-area: stage; }
+  .try__panel { grid-area: panel; }
+
+  /* ---- Cabecera ---- */
+  .try__eyebrow {
+    margin: 0 0 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+  }
+  .try__title {
+    margin: 0;
+    font-size: clamp(1.75rem, 4.2vw, 2.75rem);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  .try__sub {
+    max-width: 34rem;
+    margin: 1rem 0 0;
+    font-size: clamp(1rem, 1.6vw, 1.0625rem);
+    line-height: 1.6;
+    color: var(--c-text-2);
+    text-wrap: pretty;
+  }
+
+  /* ---- Preview ---- */
+  .try__stage {
+    --try-stage-h: 52svh;
+    position: sticky;
+    top: 56px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    height: var(--try-stage-h);
+    min-height: 330px;
+    margin: 1.25rem calc(-1 * var(--sp-6, 1.5rem)) 0;
+    padding: 0.5rem var(--sp-6, 1.5rem) 0.625rem;
+    overflow: hidden;
+    background: var(--c-bg);
+    box-shadow: 0 1px 0 var(--c-border);
+  }
+  .try:not([data-js]) .try__stage { position: relative; top: auto; }
+
+  /* Fondo: puntos radiales con dos aros, estático. */
+  .try-orbit {
+    position: absolute;
+    left: var(--try-ox, 50%);
+    top: var(--try-oy, 46%);
+    width: min(720px, 150vw);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    /* L4m: sobre crema, un remanso cálido detrás de las tarjetas para que las
+       paletas claras (Crema Bindeg, Tiza) no se pierdan en el fondo. */
+    background-image:
+      radial-gradient(circle, rgb(var(--ink-rgb) / 0.22) 1px, transparent 1.5px),
+      radial-gradient(closest-side, rgb(var(--try-shadow-rgb) / 0.09), transparent);
+    background-size: 15px 15px, 100% 100%;
+    background-position: center;
+    -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent 100%);
+    mask-image: radial-gradient(closest-side, #000 35%, transparent 100%);
+    pointer-events: none;
+  }
+  .try-orbit::before,
+  .try-orbit::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    border: 1px dashed rgb(var(--ink-rgb) / 0.16);
+  }
+  .try-orbit::before { inset: 9%; border-color: rgb(var(--ink-rgb) / 0.2); }
+  .try-orbit::after { inset: 24%; border-style: solid; border-color: rgb(var(--ink-rgb) / 0.1); }
+
+  /* Chips flotantes */
+  .try-chip {
+    position: absolute;
+    z-index: 2;
+    top: var(--try-chip-y, 0.25rem);
+    display: none;
+  }
+  .try-chip--l { left: 4%; }
+  .try-chip--r { right: 4%; }
+  .try-chip__in {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--r-full, 999px);
+    background: var(--try-panel);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: 0 10px 30px -12px rgb(var(--try-shadow-rgb) / 0.35);
+    animation: try-float 6s ease-in-out infinite;
+  }
+  .try-chip--r .try-chip__in { animation-delay: -3s; }
+  .try-chip__in svg {
+    fill: none;
+    stroke: var(--c-success);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .try-chip--r .try-chip__in svg { stroke: var(--accent-deep); stroke-width: 1.75; }
+
+  .try-fit {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    perspective: 900px;
+  }
+  .try-stack {
+    position: absolute;
+    left: 50%;
+    top: var(--try-top, 0px);
+    width: 320px;
+    transform: translateX(-62%) scale(var(--try-fit));
+    transform-origin: 50% 0;
+  }
+  .try-tilt {
+    display: grid;
+    transform-style: preserve-3d;
+  }
+  .try__stage[data-tilting] .try-tilt,
+  .try__stage[data-tilting] .try-chip { will-change: transform; }
+
+  /* ---- Tarjetas apiladas ---- */
+  .try-card {
+    grid-area: 1 / 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    transition:
+      transform 450ms var(--try-ease),
+      z-index 0s linear 225ms;
+  }
+  .try-card[data-pos='front'] { z-index: 2; transform: none; }
+  .try-card[data-pos='back'] {
+    z-index: 1;
+    transform: translate(36%, 2.5%) rotate(6deg) scale(0.93);
+  }
+  .try-card__label {
+    margin: 0 0 0.625rem 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--c-text-2);
+  }
+
+  .try-face {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 18px;
+    background: var(--try-bg);
+    color: var(--try-ink);
+    box-shadow:
+      0 0 0 1px rgb(var(--ink-rgb) / 0.1),
+      0 40px 70px -30px rgb(var(--try-shadow-rgb) / 0.5),
+      0 18px 30px -18px rgb(var(--try-shadow-rgb) / 0.32);
+  }
+  /* La de atrás se apaga un poco (velo encima, solo opacidad). */
+  .try-face::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background: rgb(var(--c-bg-rgb) / 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 450ms ease;
+  }
+  .try-card[data-pos='back'] .try-face::before { opacity: 1; }
+  /* Aro de acento al completar. */
+  .try-face::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 3px var(--try-accent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 400ms ease;
+  }
+  .try-face[data-complete]::after { opacity: 1; }
+
+  .try-glare {
+    position: absolute;
+    inset: -50%;
+    z-index: 2;
+    background: radial-gradient(circle at 50% 50%, rgb(255 255 255 / 1), transparent 42%);
+    opacity: 0;
+    transform: translate(var(--try-gx, 0), var(--try-gy, 0));
+    pointer-events: none;
+  }
+  .try-card[data-pos='front'] .try-glare { opacity: var(--try-glare, 0); }
+
+  .try-card__swap {
+    position: absolute;
+    inset: 1.6rem 0 0;
+    z-index: 5;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 18px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .try-card__swap:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 4px;
+  }
+
+  .try-face__head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem;
+  }
+  .try-face__name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+  }
+  .try-face__member {
+    display: grid;
+    justify-items: end;
+    gap: 0.0625rem;
+  }
+  .try-face__num { font-size: 1.0625rem; letter-spacing: 0.08em; }
+  .try-k {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    /* 72% de la tinta: ≥ 5.9:1 en las 8 paletas. */
+    color: color-mix(in srgb, var(--try-ink) 72%, var(--try-bg));
+  }
+  .try-k--g {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .try-v {
+    margin: 0.125rem 0 0;
+    font-size: 1.0625rem;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+  .try-face__title {
+    margin: 0.25rem 1rem 0.75rem;
+    font-size: 1.375rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  /* Logo de la tarjeta */
+  .try-logo {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    overflow: hidden;
+    border-radius: 9px;
+    background: var(--try-accent);
+    color: var(--try-glyph);
+  }
+  .try-logo > * { grid-area: 1 / 1; display: none; }
+  .try-logo[data-mode='bindeg'],
+  .try-logo[data-mode='custom'] { background: color-mix(in srgb, var(--try-ink) 8%, var(--try-bg)); }
+  .try-logo[data-mode='bindeg'] .try-logo__iso,
+  .try-logo[data-mode='initial'] .try-logo__initial,
+  .try-logo[data-mode='icon'] .try-logo__icon,
+  .try-logo[data-mode='custom'] .try-logo__img { display: block; }
+  .try-logo__initial {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--try-on-accent);
+  }
+  .try-logo__icon {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .try-logo__img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 3px;
+  }
+
+  /* Isotipo de Bindeg: recorte del PNG con alfa (no se redibuja la marca). */
+  .try-logo__iso,
+  .try-type__iso,
+  .try-lopt__iso {
+    position: relative;
+    overflow: hidden;
+    width: 78%;
+    aspect-ratio: 1;
+  }
+  .try-logo__iso img,
+  .try-type__iso img,
+  .try-lopt__iso img {
+    position: absolute;
+    top: 3%;
+    left: 1%;
+    height: 94%;
+    width: auto;
+    max-width: none;
+  }
+
+  /* Sellos */
+  .try-stamps {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(var(--try-cols, 3), minmax(0, 1fr));
+    justify-items: center;
+    gap: 0.625rem 0.25rem;
+    padding: 0.875rem 1rem;
+    background: color-mix(in srgb, var(--try-ink) 6%, var(--try-bg));
+  }
+  .try-stamps--band { margin-top: auto; padding-block: 1rem 1.125rem; }
+  .try-stamp {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1.5px dashed color-mix(in srgb, var(--try-ink) 34%, transparent);
+    color: color-mix(in srgb, var(--try-ink) 38%, transparent);
+  }
+  .try-stamp[hidden] { display: none; }
+  .try-stamp svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .try-stamp[data-filled] {
+    border: 0;
+    background: var(--try-accent);
+    color: var(--try-glyph);
+    box-shadow: 0 4px 10px -4px color-mix(in srgb, var(--try-accent) 70%, transparent);
+  }
+  .try-stamp.is-new { animation: try-drop 520ms cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+
+  .try-ready {
+    position: absolute;
+    right: 0.75rem;
+    top: 0;
+    z-index: 1;
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--r-full, 999px);
+    background: var(--try-accent);
+    color: var(--try-on-accent);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    opacity: 0;
+    transform: translateY(-40%) scale(0.8);
+    transition: opacity 300ms ease, transform 400ms var(--try-ease);
+  }
+  .try-face[data-complete] .try-ready { opacity: 1; transform: translateY(-50%); }
+
+  /* Campos */
+  .try-fields {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.75rem 1rem 0.25rem;
+  }
+  .try-fields dd { margin: 0; }
+  .try-fields--3 { grid-template-columns: auto auto minmax(0, 1fr); column-gap: 1rem; }
+  .try-fields--2 { grid-template-columns: auto 1fr; column-gap: 1.75rem; padding-top: 0; }
+  .try-fields__end { text-align: right; }
+
+  .try-roll {
+    position: relative;
+    display: inline-grid;
+    overflow: hidden;
+    vertical-align: bottom;
+    font-variant-numeric: tabular-nums;
+  }
+  .try-roll > :global(span) { grid-area: 1 / 1; }
+  .try-roll > :global(.try-roll__out) { animation: try-roll-out 420ms var(--try-ease) both; }
+  .try-roll > :global(.try-roll__in) { animation: try-roll-in 420ms var(--try-ease) both; }
+
+  /* QR dibujado */
+  .try-qr {
+    position: relative;
+    width: 116px;
+    margin: 0.875rem auto 1.125rem;
+    padding: 9px;
+    border-radius: 10px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .try-face--google .try-qr { margin-top: 1rem; }
+  .try-qr svg { display: block; width: 100%; height: auto; fill: var(--cream-ink); }
+  .try-qr__sweep {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 6px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--try-accent);
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--try-accent) 60%, transparent);
+    opacity: 0;
+  }
+  .try[data-scanning] .try-card[data-pos='front'] .try-qr__sweep { animation: try-sweep 700ms ease-in-out both; }
+
+  /* Aviso "+1 sello" */
+  /* Bajo la tarjeta del frente: aviso (montado sobre el borde), leyenda y controles. */
+  .try-under {
+    --try-k: 0;
+    position: absolute;
+    left: calc(50% + var(--try-shift, -36px) * var(--try-k));
+    top: var(--try-under, auto);
+    z-index: 4;
+    display: grid;
+    justify-items: center;
+    gap: 0.875rem;
+    width: min(560px, 100%);
+    padding-top: 1.25rem;
+    transform: translateX(-50%);
+  }
+  .try:not([data-js]) .try-under { top: auto; bottom: 0; }
+  .try-toast {
+    position: absolute;
+    left: 50%;
+    top: var(--try-toast-y, -20px);
+    margin-left: -170px;
+    width: 340px;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem 0.625rem 0.625rem;
+    border-radius: 14px;
+    background: #fff;
+    color: var(--cream-ink);
+    box-shadow: 0 24px 50px -20px rgb(var(--try-shadow-rgb) / 0.5), 0 0 0 1px rgb(var(--ink-rgb) / 0.08);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-50%) translateY(14px) scale(0.97);
+    transition:
+      opacity 280ms ease,
+      transform 420ms var(--try-ease),
+      visibility 0s linear 420ms;
+  }
+  .try-toast[data-show] {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(-50%);
+    transition:
+      opacity 280ms ease,
+      transform 420ms var(--try-ease),
+      visibility 0s;
+  }
+  .try-toast__icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--try-accent, #ee4a17);
+    color: var(--try-glyph, #fff);
+  }
+  .try-toast__icon svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .try-toast__text { flex: 1; min-width: 0; display: grid; }
+  .try-toast__name { font-size: 0.875rem; font-weight: 600; overflow-wrap: anywhere; }
+  .try-toast__msg { font-size: 0.75rem; line-height: 1.35; color: var(--cream-text-2); }
+  .try-toast__plus { flex: none; font-size: 0.9375rem; font-weight: 700; }
+
+  /* Pie de la preview */
+  .try-stage__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    width: 100%;
+  }
+  .try-toastcap,
+  .try-hint {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--c-text-3);
+    text-align: center;
+  }
+  .try-toastcap { display: none; }
+  .try-hint { display: none; }
+  .try-tag {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--r-full, 999px);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    color: var(--c-text-2);
+  }
+  .try-seg {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-full, 999px);
+    background: var(--c-surface);
+  }
+  .try-seg__btn {
+    min-height: 34px;
+    padding: 0 0.75rem;
+    border: 0;
+    border-radius: var(--r-full, 999px);
+    background: transparent;
+    color: var(--c-text-2);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  .try-seg__btn[aria-pressed='true'] { background: var(--c-text-1); color: var(--c-bg); }
+  .try-seg__btn:disabled { cursor: default; }
+  .try-seg__btn:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 2px;
+  }
+
+  /* ---- Panel ---- */
+  .try__panel {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid var(--c-border);
+    border-radius: 24px;
+    background: var(--try-panel);
+    box-shadow: 0 24px 48px -36px rgb(var(--try-shadow-rgb) / 0.4);
+  }
+  .try__nojs {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--accent-2) 40%, transparent);
+    border-radius: var(--r-md, 12px);
+    background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--c-text-1);
+  }
+  .try[data-js] .try__nojs { display: none; }
+  .try-col { display: grid; gap: 1.5rem; min-width: 0; }
+  .try-field { min-width: 0; }
+  .try-label {
+    display: block;
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-2);
+  }
+  .try-label__val {
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 0.8125rem;
+    color: var(--c-text-1);
+  }
+  .try-help {
+    margin: 0.625rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--c-text-3);
+  }
+  .try-error:empty { display: none; }
+  .try-error {
+    margin: 0.5rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--c-danger);
+  }
+  .try-ok {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin: 0.5rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--c-success);
+  }
+  .try-ok[hidden] { display: none; }
+  .try-link {
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--c-text-1);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  /* Tipo de negocio: carrusel en móvil */
+  .try-types {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0 -1.25rem;
+    padding: 0.25rem 1.25rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 1.25rem;
+    scrollbar-width: none;
+  }
+  .try-types::-webkit-scrollbar { display: none; }
+  .try-type {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0 1rem 0 0.75rem;
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--r-full, 999px);
+    background: transparent;
+    color: var(--c-text-1);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+  .try-type:hover:not(:disabled) { border-color: rgb(var(--ink-rgb) / 0.32); }
+  .try-type[aria-checked='true'] {
+    border-color: var(--c-text-1);
+    background: var(--c-text-1);
+    color: var(--c-bg);
+  }
+  .try-type__icon {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.85;
+  }
+  .try-type__iso { width: 18px; }
+
+  /* Logo */
+  .try-logos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .try-logos__group { display: contents; }
+  .try-lopt {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--c-border);
+    border-radius: 14px;
+    background: rgb(var(--ink-rgb) / 0.05);
+    color: var(--c-text-1);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+  .try-lopt:hover:not(:disabled) { border-color: var(--c-border-strong); }
+  .try-lopt[aria-checked='true'],
+  .try-lopt[aria-pressed='true'] {
+    border-color: var(--c-text-1);
+    background: rgb(var(--ink-rgb) / 0.09);
+  }
+  .try-lopt svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .try-lopt__iso { width: 30px; }
+  .try-lopt__initial { font-size: 1.25rem; font-weight: 700; }
+  .try-lopt--mine {
+    grid-template-rows: auto auto;
+    align-content: center;
+    gap: 0.25rem;
+    border-style: dashed;
+    border-color: var(--c-border-strong);
+    background: transparent;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--c-text-2);
+  }
+  .try-lopt--mine svg { grid-row: 1; justify-self: center; }
+  .try-lopt--mine > span { grid-row: 2; }
+  .try-lopt__thumb {
+    display: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 8px;
+    background: rgb(var(--ink-rgb) / 0.08);
+  }
+  .try-lopt--mine[data-has-img] { border-style: solid; }
+  .try-lopt--mine[data-has-img] .try-lopt__thumb { display: block; }
+  .try-file {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    opacity: 0;
+  }
+
+  /* Nombre */
+  .try-input { position: relative; }
+  .try-input input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 4.25rem 0 1rem;
+    /* Sobre crema, el borde del campo llega a 3:1 (WCAG 1.4.11). */
+    border: 1px solid rgb(var(--ink-rgb) / 0.5);
+    border-radius: var(--r-md, 12px);
+    background: rgb(255 255 255 / 0.75);
+    color: var(--c-text-1);
+    font: inherit;
+    font-size: 1rem;
+  }
+  .try-input input::placeholder { color: var(--c-text-3); opacity: 1; }
+  .try-input input:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 2px;
+  }
+  .try-input__count {
+    position: absolute;
+    right: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    color: var(--c-text-3);
+    pointer-events: none;
+  }
+  .try[data-name-full] .try-input__count { color: var(--accent-deep); }
+
+  /* Paletas */
+  .try-pals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-left: -0.25rem;
+  }
+  .try-pal {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+  }
+  .try-pal__sw {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--sw-bg) 50%, var(--sw-ac) 50%);
+    box-shadow: inset 0 0 0 1px rgb(var(--ink-rgb) / 0.16);
+    transition: transform 0.2s var(--try-ease);
+  }
+  .try-pal:hover:not(:disabled) .try-pal__sw { transform: scale(1.08); }
+  .try-pal[aria-checked='true'] .try-pal__sw {
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--ink-rgb) / 0.16),
+      0 0 0 2px var(--try-panel),
+      0 0 0 4px var(--c-text-1);
+  }
+
+  /* Acciones */
+  .try-actions {
+    display: flex;
+    gap: 0.625rem;
+  }
+  .try[data-js] .try-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 -1.25rem -1.25rem;
+    padding: 0.75rem 1.25rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    border-radius: 0 0 24px 24px;
+    background: linear-gradient(to top, var(--try-panel) 70%, rgb(251 248 242 / 0));
+  }
+  .try-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-width: 0;
+    min-height: 52px;
+    padding: 0 0.875rem;
+    border-radius: 14px;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: transform 0.15s ease, background-color 0.2s ease, opacity 0.2s ease;
+  }
+  .try-btn--primary {
+    flex: 1.4;
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .try-btn--primary:active:not(:disabled) { transform: scale(0.98); }
+  .try-btn--primary[aria-busy] { opacity: 0.85; cursor: progress; }
+  .try-btn--ghost {
+    flex: 1;
+    border: 1px solid var(--c-border-strong);
+    background: transparent;
+    color: var(--c-text-1);
+  }
+  .try-btn--ghost:hover:not(:disabled) { background: rgb(var(--ink-rgb) / 0.06); }
+  .try-btn:disabled { cursor: default; }
+  .try-btn--ghost:disabled { color: var(--c-text-3); border-color: var(--c-border); }
+  .try:not([data-js]) .try__panel :disabled { opacity: 0.55; }
+  .try-btn__arrow[hidden] { display: none; }
+
+  .try-type:focus-visible,
+  .try-lopt:focus-visible,
+  .try-link:focus-visible,
+  .try-btn:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 3px;
+  }
+  .try-pal:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 0;
+  }
+
+  /* ---- Leyendas con el hilo (crema → ámbar → naranja, como "Cómo funciona") ---- */
+  .try-legend {
+    display: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 2rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .try[data-js] .try-legend { display: grid; }
+  .try-legend__item {
+    /* L4m: el mismo naranja que se intensifica de 1 a 3, en tonos que leen sobre crema. */
+    --try-dot: var(--accent-soft);
+    --try-next: var(--accent);
+    --try-dot-ink: var(--cream-ink);
+    position: relative;
+    display: grid;
+    justify-items: start;
+    align-content: start;
+    gap: 0.625rem;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--c-text-2);
+    transition: color 0.3s ease;
+  }
+  .try-legend__item:nth-child(2) { --try-dot: var(--accent); --try-next: var(--accent-deep); }
+  .try-legend__item:nth-child(3) { --try-dot: var(--accent-deep); --try-dot-ink: var(--cream-bg); }
+  .try-legend__dot {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--try-dot);
+    border-radius: 50%;
+    background: var(--c-bg);
+    color: var(--c-text-1);
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: transform 0.3s var(--try-ease);
+  }
+  /* Móvil: el tramo sale del círculo hacia el siguiente, sobre el texto. */
+  .try-legend__line {
+    position: absolute;
+    top: 13px;
+    left: 36px;
+    right: calc(-0.75rem + 8px);
+    height: 2px;
+    border-radius: 2px;
+    background: rgb(var(--ink-rgb) / 0.1);
+    overflow: hidden;
+  }
+  .try-legend__fill {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, var(--try-dot), var(--try-next));
+    opacity: 0.5;
+    transform-origin: left;
+    transition: transform 500ms var(--try-ease), opacity 0.3s ease;
+  }
+  .try-legend[data-running] .try-legend__fill { opacity: 1; transform: scaleX(0); }
+  .try-legend[data-running] .try-legend__item[data-done] .try-legend__fill { transform: none; }
+  .try-legend[data-running] .try-legend__item:not([data-on]) .try-legend__dot { border-color: var(--c-border-strong); color: var(--c-text-2); }
+  .try-legend__item[data-on] .try-legend__dot { border-color: var(--try-dot); background: var(--try-dot); color: var(--try-dot-ink); }
+  .try-legend__item[data-now] { color: var(--c-text-1); }
+  .try-legend__item[data-now] .try-legend__dot { transform: scale(1.12); }
+
+  .try-note {
+    margin: 1.75rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--c-text-3);
+  }
+
+  /* ---- Pausa ---- */
+  .try[data-try-paused] *,
+  .try[data-try-paused] *::before,
+  .try[data-try-paused] *::after { animation-play-state: paused; }
+
+  @keyframes try-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes try-drop {
+    0% { opacity: 0; transform: translateY(-34px) scale(1.25); }
+    55% { opacity: 1; transform: translateY(3px) scale(0.96); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes try-sweep {
+    0% { opacity: 0; transform: translateY(0); }
+    12% { opacity: 1; }
+    50% { transform: translateY(100px); }
+    88% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(0); }
+  }
+  @keyframes try-roll-out {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(-100%); opacity: 0; }
+  }
+  @keyframes try-roll-in {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  /* ---- ≥640: preview en flujo; panel en 2 columnas internas ---- */
+  @media (min-width: 640px) {
+    .try {
+      --try-scale-max: 1.1;
+      --try-reserve: 136;
+      /* La hoja crema se separa del borde y redondea más (sin tocar la altura). */
+      margin-inline: clamp(0.75rem, 1.6vw, 1.5rem);
+      border-radius: clamp(28px, 3vw, 44px);
+    }
+    .try__stage {
+      position: relative;
+      top: auto;
+      height: clamp(600px, 80vw, 700px);
+      margin: 2rem 0 0;
+      padding: 0;
+      overflow: visible;
+      background: none;
+      box-shadow: none;
+    }
+    .try-chip { display: block; }
+    .try-fit { margin-top: 3.75rem; }
+    .try-toastcap { display: block; }
+    .try-hint { display: block; }
+    .try-under { --try-k: 1; --try-toast-y: 0px; padding-top: 2.25rem; }
+    .try-stage__foot { flex-wrap: wrap; justify-content: center; width: auto; }
+    .try-btn { padding: 0 1.25rem; font-size: 1rem; }
+    .try__panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 2rem;
+      padding: 1.5rem;
+    }
+    .try__nojs,
+    .try-actions { grid-column: 1 / -1; }
+    .try[data-js] .try-actions {
+      position: static;
+      margin: 0;
+      padding: 0;
+      background: none;
+    }
+    .try-types {
+      flex-wrap: wrap;
+      margin: 0;
+      padding: 0;
+      overflow: visible;
+    }
+    .try-legend { margin-top: 2.5rem; gap: 1rem; }
+    .try-legend__item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.875rem;
+    }
+    .try-legend__text { flex: none; max-width: 70%; }
+    .try-legend__line {
+      position: relative;
+      top: auto;
+      left: auto;
+      right: auto;
+      flex: 1;
+      min-width: 1.5rem;
+      margin-right: -0.25rem;
+    }
+  }
+
+  /* ---- ≥1024: 5/7, panel a la izquierda y preview a la derecha ---- */
+  @media (min-width: 1024px) {
+    .try { --try-reserve: 146; }
+    .try__grid {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      grid-template-rows: auto 1fr;
+      grid-template-areas:
+        'head stage'
+        'panel stage';
+      column-gap: clamp(2rem, 4vw, 4rem);
+    }
+    .try__stage {
+      height: auto;
+      min-height: 640px;
+      margin: 0;
+    }
+    .try__panel {
+      grid-template-columns: minmax(0, 1fr);
+      align-self: start;
+      margin-top: 2rem;
+      padding: 1.5rem;
+    }
+    .try-fit { margin-top: 3rem; }
+    .try-pals { gap: 0; }
+    .try-pal { width: 42px; height: 42px; }
+    .try-chip--l { left: 2%; }
+    .try-chip--r { right: 0; }
+    .try-legend { margin-top: 3rem; }
+  }
+
+  /* ---- ≥1280: contenedor 1280, tarjetas ×1.15 y fondo que sangra ---- */
+  @media (min-width: 1280px) {
+    .try { --try-scale-max: 1.15; --try-reserve: 136; }
+    .try__inner { max-width: 1280px; }
+    .try__grid { grid-template-columns: minmax(0, 460px) minmax(0, 1fr); column-gap: 5rem; }
+    .try-orbit { width: 760px; }
+    .try-under { width: min(700px, 100%); }
+    .try-pals { gap: 0.125rem; }
+    .try-pal { width: 44px; height: 44px; }
+    .try-chip--l { left: 6%; }
+    .try-chip--r { right: 2%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .try *,
+    .try *::before,
+    .try *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+</style>

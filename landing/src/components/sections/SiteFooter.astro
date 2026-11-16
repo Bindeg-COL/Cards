@@ -1,0 +1,1030 @@
+---
+/**
+ * SiteFooter — pie de página (L4l, decisión 007; diseno.md "Visual — L4l: Footer").
+ *
+ * "Cierre sellado": frase de cierre en dos tonos, enlaces solo a destinos que
+ * existen en la página, tarjeta de vidrio (degradado, sin backdrop-filter) con un
+ * mini-pase decorativo que lleva a #pruebalo, wordmark "Bindeg"
+ * completo al ancho del contenido y, debajo, la barra legal. Textos de contenido/landing.md ("Pie de
+ * página"). Sin redes, correo, newsletter ni /privacidad (llegan en L6).
+ *
+ * Wordmark: texto tipográfico (aria-hidden), crema #F3EEE4. La "i" es una ı sin
+ * punto; el punto naranja #FF6A3D es un círculo anclado a la línea base (un
+ * marcador de 0×0 alineado por baseline) y elevado 1ex, así sigue a la x-height
+ * de la fuente que se use. Es el único uso del naranja de la marca.
+ * Su tamaño sale del ancho del contenedor (cqw): encaja sin desbordar y el reveal
+ * (solo transform/opacity) no mueve el documento.
+ *
+ * Reveal: una vez, con IntersectionObserver (translateY + opacity, letras a 40 ms).
+ * Sin JS o con reduced motion: todo visible desde el inicio.
+ *
+ * L4n (decisión 009): el wordmark mide lo mismo que el contenedor de contenido (no
+ * 100vw). Detrás, a todo el ancho y sin cambiar la altura del documento: un brillo
+ * cálido estático (radial-gradients, como la aurora del hero; es lo único que queda
+ * sin JS) y el campo de cuadritos <BlinkingSquares>, denso abajo y apagándose hacia
+ * arriba. Termina en el filete de la barra legal, que queda limpia.
+ *
+ * Hermano de <main> (no va dentro): no recibe el min-height de la última sección.
+ */
+import BlinkingSquares from '../ui/BlinkingSquares.astro';
+
+const groups = [
+  {
+    id: 'ftr-explora',
+    title: 'Explora',
+    links: [
+      { href: '/', label: 'Inicio' },
+      { href: '#problema', label: 'El problema' },
+      { href: '#como-funciona', label: 'Cómo funciona' },
+    ],
+  },
+  {
+    id: 'ftr-pruebalo',
+    title: 'Pruébalo',
+    links: [
+      { href: '#pruebalo', label: 'Mira tu tarjeta' },
+      { href: '#precios', label: 'Precios' },
+      { href: '#piloto', label: 'Negocios piloto' },
+    ],
+  },
+];
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const word = ['B', 'i', 'n', 'd', 'e', 'g'];
+// Sellos del mini-pase: 5 de 8 marcados.
+const stamps = Array.from({ length: 8 }, (_, i) => i < 5);
+// QR decorativo 5×5 (patrón fijo, no codifica nada).
+const qr = '1110110101011101010110111'.split('').map((c) => c === '1');
+---
+
+<footer class="ftr" aria-labelledby="ftr-titulo" data-ftr>
+  <div class="ftr__inner">
+    <div class="ftr__grid">
+      <div class="ftr__lead">
+        <h2 id="ftr-titulo" class="ftr__title">
+          <span class="ftr__title-a">Tu tarjeta de fidelidad,</span>
+          <span class="ftr__title-b">en el celular de tus clientes.</span>
+        </h2>
+
+        <nav class="ftr__nav" aria-label="Pie de página">
+          {groups.map((g, gi) => (
+            <div class="ftr__group">
+              <h3 id={g.id} class="ftr__group-title">{g.title}</h3>
+              <ul class="ftr__links" role="list" aria-labelledby={g.id}>
+                {g.links.map((l, li) => (
+                  <li>
+                    <a class="ftr__link" href={l.href}>
+                      <span class="ftr__idx" aria-hidden="true">{pad(gi * 3 + li + 1)}</span>
+                      <span class="ftr__link-text">{l.label}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </div>
+
+      <!-- Tarjeta promo de vidrio: el único botón del pie (lleva a la muestra, sin pedir datos). -->
+      <aside class="ftr__card" aria-labelledby="ftr-promo">
+        <div class="ftr__stage" aria-hidden="true">
+          <div class="ftr__pass">
+            <div class="ftr__pass-top">
+              <span class="ftr__pass-logo"></span>
+              <span class="ftr__pass-bars">
+                <span></span>
+                <span></span>
+              </span>
+              <span class="ftr__pass-pts"></span>
+            </div>
+            <div class="ftr__pass-stamps">
+              {stamps.map((on) => <span data-on={on ? '' : undefined}></span>)}
+            </div>
+            <div class="ftr__pass-foot">
+              <span class="ftr__pass-qr">
+                {qr.map((on) => <span data-on={on ? '' : undefined}></span>)}
+              </span>
+              <span class="ftr__pass-bars ftr__pass-bars--foot">
+                <span></span>
+                <span></span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="ftr__promo">
+          <p class="ftr__eyebrow">Pruébalo</p>
+          <p id="ftr-promo" class="ftr__promo-text">Mira cómo quedaría la tarjeta de tu negocio en la billetera.</p>
+          <a class="ftr__cta" href="#pruebalo">
+            <span>Ver mi tarjeta</span>
+            <span class="ftr__cta-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Wordmark (firma): completo, al ancho del contenido; debajo, la barra legal. -->
+  <div class="ftr__base">
+  <div class="ftr__mark" aria-hidden="true" data-ftr-mark>
+    <div class="ftr__field">
+      <BlinkingSquares class="ftr__squares" direction="bottom" level={0.42} />
+    </div>
+    <p class="ftr__word">
+      {word.map((ch, i) => {
+        // Capas del glitch (L4o): vacías en el HTML, dibujan attr(data-ch) con ::before.
+        // Ocultas en reposo; la "i" usa la ı sin punto para no duplicar el punto naranja.
+        const g = ch === 'i' ? 'ı' : ch;
+        const ghosts = ['p', 'a', 'o'].map((k) => (
+          <span class={`ftr__gl ftr__gl--${k}`} data-ch={g}></span>
+        ));
+        const over = [
+          <span class="ftr__gl ftr__gl--k" data-ch={g}></span>,
+          <span class="ftr__gl ftr__gl--sw" data-ch=""></span>,
+        ];
+        return ch === 'i' ? (
+          <span class="ftr__ch ftr__ch--i" style={`--i:${i}`} data-ftr-ch={i}>
+            {ghosts}
+            <span class="ftr__i-stem ftr__face">ı</span>
+            <span class="ftr__i-base ftr__face"></span>
+            {over}
+          </span>
+        ) : (
+          <span class="ftr__ch" style={`--i:${i}`} data-ftr-ch={i}>
+            {ghosts}
+            <span class="ftr__face">{ch}</span>
+            {over}
+          </span>
+        );
+      })}
+    </p>
+  </div>
+  <div class="ftr__legal">
+    <p class="ftr__copy">
+      <span>© 2026 Bindeg</span>
+      <span class="ftr__sep" aria-hidden="true"></span>
+      <span class="ftr__desc">Tarjetas de fidelidad en Wallet</span>
+    </p>
+    <a class="ftr__top" href="#contenido">
+      Volver arriba
+      <span class="ftr__top-arrow" aria-hidden="true">↑</span>
+    </a>
+  </div>
+  </div>
+</footer>
+
+<script>
+  const setup = (footer: HTMLElement) => {
+    const mark = footer.querySelector<HTMLElement>('[data-ftr-mark]');
+    if (!mark) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) return;
+
+    // Si ya está a la vista al cargar (recarga al final), no se oculta.
+    const r = mark.getBoundingClientRect();
+    if (r.top < window.innerHeight && r.bottom > 0) return;
+
+    footer.dataset.ftrArmed = '';
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        footer.dataset.ftrIn = '';
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(mark);
+  };
+
+  /*
+   * Glitch del wordmark (L4o/L4p, decisión 010). Puntero fino: cada letra a menos de
+   * R px del cursor (250 px con el wordmark a 1280, escalado con su tamaño) se glitchea
+   * según su cercanía (smoothstep) y la velocidad suavizada del cursor.
+   *
+   * L4p, movimiento fluido: nada salta. La letra y cada fantasma son resortes (posición,
+   * velocidad, objetivo) integrados con el dt real en un único bucle rAF. Los objetivos
+   * salen de ruido continuo (sumas de senos con fase por letra) y de la dirección del
+   * cursor: el naranja se queda atrás y el ámbar/melocotón se adelantan (aberración
+   * cromática direccional), más separados cuanto más rápido. Quieto encima, solo
+   * "respira". La tira desplazada (sombra carbón + franja crema corrida) se desliza con
+   * ruido; el intercambio de letra es raro (velocidad alta y enfriamiento por letra).
+   * Al salir, los resortes vuelven solos a 0 y, con la energía en reposo, el bucle se
+   * detiene y borra los estilos: reposo idéntico.
+   *
+   * Táctil: un toque da un glitch breve. Reduced motion: nada. Solo escribe translate,
+   * opacity, clip-path y data-ch (attr() en ::before); nada de layout. Rects cacheados
+   * (ResizeObserver; el scroll pasivo solo recoloca el cursor), lecturas antes que
+   * escrituras y pausa fuera de pantalla.
+   */
+  const POOL = 'BINDEG';
+  const REF_EM = 0.3355 * 1280; // tamaño de letra del wordmark a 1280 de ancho
+  const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const smooth = (a: number, b: number, v: number) => {
+    const k = clamp01((v - a) / (b - a));
+    return k * k * (3 - 2 * k);
+  };
+  // Ruido continuo en [-1, 1]: suma de senos de frecuencias no armónicas.
+  const noise = (t: number, ph: number) =>
+    (Math.sin(t * 1.7 + ph) + 0.6 * Math.sin(t * 2.9 + ph * 1.31) + 0.35 * Math.sin(t * 5.3 + ph * 2.13)) / 1.95;
+
+  // Resorte 2D (px). zeta < 1 deja un rebote mínimo al volver.
+  type Spring = { x: number; y: number; vx: number; vy: number; tx: number; ty: number };
+  const spring = (): Spring => ({ x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0 });
+  const step = (s: Spring, k: number, c: number, dt: number) => {
+    s.vx += (k * (s.tx - s.x) - c * s.vx) * dt;
+    s.vy += (k * (s.ty - s.y) - c * s.vy) * dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+  };
+  const K_FACE = 340, C_FACE = 2 * Math.sqrt(K_FACE) * 0.8;
+  const K_GHOST = 210, C_GHOST = 2 * Math.sqrt(K_GHOST) * 0.78;
+  const K_SLICE = 260, C_SLICE = 2 * Math.sqrt(K_SLICE) * 0.85;
+
+  type Layer = { el: HTMLElement; s: Spring; o: number; tr: string; op: string; cl: string };
+  type Letter = {
+    el: HTMLElement;
+    faces: HTMLElement[];
+    gh: Layer[]; // melocotón, ámbar, naranja
+    k: Layer; // sombra carbón (tapa la franja de la letra)
+    sw: Layer; // franja crema corrida / letra intercambiada
+    face: Spring;
+    base: string;
+    up: boolean;
+    ph: number; // fase de ruido propia
+    cx: number; // centro en coordenadas de documento (cacheado)
+    cy: number;
+    t: number; // cercanía 0..1
+    band: number; // presencia de la tira 0..1 (suavizada)
+    swapUntil: number;
+    cool: number;
+    ftr: string;
+    dirty: boolean;
+  };
+
+  const glitch = (footer: HTMLElement) => {
+    const mark = footer.querySelector<HTMLElement>('[data-ftr-mark]');
+    const word = footer.querySelector<HTMLElement>('.ftr__word');
+    if (!mark || !word) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
+
+    const layer = (el: Element | null): Layer => ({ el: el as HTMLElement, s: spring(), o: 0, tr: '', op: '', cl: '' });
+    const letters: Letter[] = [...word.querySelectorAll<HTMLElement>('[data-ftr-ch]')].map((el, i) => {
+      const q = (c: string) => el.querySelector(`.ftr__gl--${c}`);
+      const base = q('k')?.getAttribute('data-ch') ?? '';
+      return {
+        el,
+        faces: [...el.querySelectorAll<HTMLElement>('.ftr__face')],
+        gh: ['p', 'a', 'o'].map((c) => layer(q(c))),
+        k: layer(q('k')),
+        sw: layer(q('sw')),
+        face: spring(),
+        base,
+        up: base === base.toUpperCase() && base !== 'ı',
+        ph: i * 2.399 + 0.7,
+        cx: 0, cy: 0, t: 0, band: 0, swapUntil: 0, cool: 0, ftr: '', dirty: false,
+      };
+    });
+    if (!letters.length || letters.some((l) => !l.sw.el || !l.k.el || l.gh.some((g) => !g.el))) return;
+
+    // Cursor (coordenadas de cliente) y su velocidad suavizada (px/s).
+    let cxp = 0, cyp = 0, lastX = 0, lastY = 0, hasLast = false;
+    let vx = 0, vy = 0, dirX = 1, dirY = 0;
+    let inside = false, touchUntil = 0, clock = 0, last = 0, raf = 0;
+    let em = REF_EM, R = 250, stale = true, visible = true;
+
+    // Lee la geometría (solo cuando cambió): centros por offsets de layout, sin transform.
+    const measure = () => {
+      const r = word.getBoundingClientRect();
+      em = parseFloat(getComputedStyle(word).fontSize) || REF_EM;
+      R = 250 * (em / REF_EM);
+      const ox = r.left + window.scrollX, oy = r.top + window.scrollY;
+      for (const l of letters) {
+        l.cx = ox + l.el.offsetLeft + l.el.offsetWidth / 2;
+        l.cy = oy + l.el.offsetTop + l.el.offsetHeight / 2;
+      }
+      stale = false;
+    };
+
+    const pick = (l: Letter) => {
+      const own = l.base === 'ı' ? 'I' : l.base.toUpperCase();
+      let c = own;
+      while (c === own) c = POOL[Math.floor(Math.random() * POOL.length)];
+      if (l.up) return c;
+      return c === 'I' ? 'ı' : c.toLowerCase();
+    };
+    const setCh = (l: Letter, ch: string) => {
+      for (const g of [...l.gh, l.k]) g.el.dataset.ch = ch;
+    };
+    const endSwap = (l: Letter) => {
+      l.swapUntil = 0;
+      setCh(l, l.base);
+      l.sw.el.dataset.ch = l.base;
+      for (const f of l.faces) f.style.opacity = '';
+    };
+    const reset = (s: Spring) => { s.x = s.y = s.vx = s.vy = s.tx = s.ty = 0; };
+    const clean = (l: Letter) => {
+      if (l.swapUntil) endSwap(l);
+      reset(l.face);
+      l.band = 0; l.t = 0;
+      if (!l.dirty) return;
+      l.el.style.translate = '';
+      l.ftr = '';
+      for (const g of [...l.gh, l.k, l.sw]) {
+        g.el.style.translate = g.el.style.opacity = g.el.style.clipPath = '';
+        g.tr = g.op = g.cl = '';
+        g.o = 0;
+        reset(g.s);
+      }
+      l.sw.el.dataset.ch = '';
+      l.dirty = false;
+    };
+    const stop = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0; last = 0; hasLast = false;
+      vx = vy = 0;
+      letters.forEach(clean);
+      delete footer.dataset.ftrGlitch;
+    };
+
+    // Escribe solo lo que cambió.
+    const put = (g: Layer, tr: string, op: string, cl: string) => {
+      const s = g.el.style;
+      if (g.tr !== tr) { s.translate = g.tr = tr; }
+      if (g.op !== op) { s.opacity = g.op = op; }
+      if (g.cl !== cl) { s.clipPath = g.cl = cl; }
+    };
+    const px = (v: number) => v.toFixed(2) + 'px';
+
+    const frame = (now: number) => {
+      raf = 0;
+      if (!visible) { stop(); return; }
+      const dtMs = last ? Math.min(50, Math.max(1, now - last)) : 16.7;
+      last = now;
+      const dt = dtMs / 1000;
+
+      // ---- Lecturas ----
+      if (stale) measure();
+      const sx = window.scrollX, sy = window.scrollY;
+      const touching = now < touchUntil;
+      const active = inside || touching;
+
+      // Velocidad: diferencia por frame, suavizada (lerp ~0.2 por frame a 60 fps).
+      if (hasLast && !touching) {
+        const a = 1 - Math.pow(0.8, dtMs / 16.7);
+        vx += ((cxp - lastX) / dt - vx) * a;
+        vy += ((cyp - lastY) / dt - vy) * a;
+      }
+      lastX = cxp; lastY = cyp; hasLast = true;
+      const speed = Math.hypot(vx, vy);
+      if (speed > 20) { dirX = vx / speed; dirY = vy / speed; }
+      // Rapidez normalizada al tamaño del wordmark (em/s), saturación suave.
+      const sp = touching ? 0.85 : active ? 1 - Math.exp(-(speed / em) / 1.6) : 0;
+      clock += dt * (0.9 + 3.4 * sp);
+      const pX = cxp + sx, pY = cyp + sy;
+
+      // ---- Integración ----
+      let busy = active;
+      const fo = 1 - Math.exp(-dt / 0.07);
+      const fb = 1 - Math.exp(-dt / 0.09);
+      for (const l of letters) {
+        const d = Math.hypot(pX - l.cx, (pY - l.cy) * 1.15);
+        const t = active ? 1 - smooth(0, 1, d / R) : 0;
+        l.t = t;
+        const ph = l.ph, c = clock;
+        const n1 = noise(c, ph), n2 = noise(c * 1.13, ph + 3.1), n3 = noise(c * 0.77, ph + 6.2);
+
+        // Cara: arrastrada en la dirección del cursor + respiración (ruido continuo).
+        const drag = (0.035 * sp + 0.012) * t;
+        l.face.tx = (dirX * 0.05 * sp * t + n1 * drag) * em;
+        l.face.ty = (dirY * 0.03 * sp * t + n2 * drag * 0.45) * em;
+        step(l.face, K_FACE, C_FACE, dt);
+
+        // Fantasmas: naranja atrás, ámbar y melocotón delante; separación ∝ rapidez.
+        const spread = (0.016 + 0.085 * sp) * t;
+        const [p, a, o] = l.gh;
+        o.s.tx = (-dirX * spread * 1.0 + n2 * 0.012 * t) * em;
+        o.s.ty = (-dirY * spread * 0.6 + n3 * 0.010 * t) * em;
+        a.s.tx = (dirX * spread * 0.8 + n3 * 0.012 * t) * em;
+        a.s.ty = (dirY * spread * 0.5 + n1 * 0.010 * t) * em;
+        p.s.tx = (dirX * spread * 0.4 - n1 * 0.010 * t) * em;
+        p.s.ty = (dirY * spread * 0.3 - n2 * 0.016 * t) * em;
+        o.o += (t * (0.32 + 0.62 * sp) - o.o) * fo;
+        a.o += (t * (0.26 + 0.52 * sp) - a.o) * fo;
+        p.o += (t * (0.16 + 0.38 * sp) - p.o) * fo;
+        for (const g of l.gh) step(g.s, K_GHOST, C_GHOST, dt);
+
+        // Tira: aparece con ruido (solo en movimiento) y se desliza en vertical.
+        const gate = smooth(0.05, 0.55, n3) * smooth(0.12, 0.55, sp);
+        l.band += (gate * t - l.band) * fb;
+        l.sw.s.tx = (dirX * (0.06 + 0.05 * (n1 + 1)) * l.band) * em;
+        l.sw.s.ty = 0;
+        step(l.sw.s, K_SLICE, C_SLICE, dt);
+
+        // Intercambio de letra: raro, solo rápido y cerca, con enfriamiento por letra.
+        if (l.swapUntil && now >= l.swapUntil) endSwap(l);
+        else if (!l.swapUntil && sp > 0.72 && t > 0.55 && now > l.cool && Math.random() < 1 - Math.exp(-1.1 * dt)) {
+          const ch = pick(l);
+          l.swapUntil = now + 70 + Math.random() * 50;
+          l.cool = now + 900 + Math.random() * 600;
+          l.sw.el.dataset.ch = ch;
+          setCh(l, ch);
+          for (const f of l.faces) f.style.opacity = '0';
+        }
+
+        if (!busy) {
+          const e = (s: Spring) => Math.abs(s.x) + Math.abs(s.y) + (Math.abs(s.vx) + Math.abs(s.vy)) * 0.02;
+          busy =
+            e(l.face) > 0.06 || l.gh.some((g) => g.o > 0.004 || e(g.s) > 0.06) ||
+            l.band > 0.004 || e(l.sw.s) > 0.06 || l.swapUntil > 0;
+        }
+      }
+
+      if (!busy) { stop(); return; }
+
+      // ---- Escrituras ----
+      for (const l of letters) {
+        const ftr = `${px(l.face.x)} ${px(l.face.y)}`;
+        if (l.ftr !== ftr) l.el.style.translate = l.ftr = ftr;
+        for (const g of l.gh) put(g, `${px(g.s.x)} ${px(g.s.y)}`, g.o.toFixed(3), '');
+        if (l.swapUntil) {
+          put(l.sw, `${px(l.sw.s.x)} 0px`, '1', '');
+          put(l.k, '0px 0px', '0', '');
+        } else {
+          // Franja de alto fijo (ruido): la copia crema sale deslizándose desde 0 y la
+          // sombra carbón aparece por opacidad; así no hay hilos ni saltos al empezar.
+          if (l.band < 0.01 && Math.abs(l.sw.s.x) < 0.5) {
+            put(l.sw, '0px 0px', '0', '');
+            put(l.k, '0px 0px', '0', '');
+          } else {
+            const h = 0.08 + 0.04 * (noise(clock * 1.3, l.ph + 9.4) + 1);
+            const mid = 0.5 + 0.34 * noise(clock * 0.62, l.ph + 4.7);
+            const top = Math.max(4, (mid - h / 2) * 100);
+            const bot = Math.max(4, 100 - top - h * 100);
+            const clip = `inset(${top.toFixed(2)}% -15% ${bot.toFixed(2)}% -15%)`;
+            if (l.sw.el.dataset.ch !== l.base) l.sw.el.dataset.ch = l.base;
+            put(l.k, '0px 0px', smooth(0.1, 0.6, l.band).toFixed(3), clip);
+            put(l.sw, `${px(l.sw.s.x)} 0px`, '1', clip);
+          }
+        }
+        l.dirty = true;
+      }
+      raf = requestAnimationFrame(frame);
+    };
+
+    const kick = () => {
+      if (!visible) return;
+      if (!raf) raf = requestAnimationFrame(frame);
+      footer.dataset.ftrGlitch = '';
+    };
+    // No se glitchea mientras el reveal está pendiente.
+    const ready = () =>
+      !reduce.matches && (!('ftrArmed' in footer.dataset) || 'ftrIn' in footer.dataset);
+
+    mark.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' || !fine.matches || !ready()) return;
+      cxp = e.clientX; cyp = e.clientY;
+      if (!inside) { inside = true; hasLast = false; }
+      kick();
+    });
+    mark.addEventListener('pointerleave', () => { inside = false; });
+    mark.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' || !ready()) return;
+      cxp = e.clientX; cyp = e.clientY; hasLast = false;
+      dirX = Math.random() < 0.5 ? -1 : 1; dirY = 0;
+      touchUntil = performance.now() + 380;
+      kick();
+    }, { passive: true });
+
+    // Geometría cacheada: se marca vieja al cambiar de tamaño (fuentes, ancho).
+    if ('ResizeObserver' in window) {
+      const ro = new ResizeObserver(() => { stale = true; });
+      ro.observe(word);
+      letters.forEach((l) => ro.observe(l.el));
+    }
+    window.addEventListener('resize', () => { stale = true; }, { passive: true });
+    // El scroll no cambia la geometría en coordenadas de documento: solo mueve el cursor.
+    window.addEventListener('scroll', () => { if (raf || inside) kick(); }, { passive: true });
+    // Fuera de pantalla no se trabaja.
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        visible = entries.some((e) => e.isIntersecting);
+        if (!visible) { inside = false; stop(); }
+      }).observe(mark);
+    }
+    reduce.addEventListener('change', () => {
+      if (!reduce.matches) return;
+      inside = false; touchUntil = 0;
+      stop();
+    });
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-ftr]').forEach((f) => {
+    setup(f);
+    glitch(f);
+  });
+</script>
+
+<style>
+  .ftr {
+    --ftr-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --ftr-cream: #f3eee4;
+    --ftr-orange: #ff6a3d;
+    position: relative;
+    isolation: isolate;
+    overflow-x: clip;
+    padding: clamp(4rem, 8vw, 7rem) var(--sp-6, 1.5rem) 0;
+    color: var(--c-text-1);
+  }
+  /* Filete superior que se apaga hacia los bordes y halo tenue detrás de la tarjeta. */
+  .ftr::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 6%;
+    right: 6%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--c-border-strong) 30%, var(--c-border-strong) 70%, transparent);
+  }
+  .ftr::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: -10%;
+    right: -10%;
+    width: min(60rem, 90vw);
+    aspect-ratio: 1;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
+    pointer-events: none;
+  }
+  .ftr__inner {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+
+  /* ---- Grid (móvil primero) ---- */
+  .ftr__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3rem;
+  }
+
+  /* ---- Frase de cierre ---- */
+  .ftr__title {
+    margin: 0;
+    font-size: clamp(2.125rem, 5.2vw, 4.25rem);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+  }
+  .ftr__title-a,
+  .ftr__title-b { display: block; }
+  .ftr__title-b { color: var(--c-text-3); }
+
+  /* ---- Enlaces ---- */
+  .ftr__nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem 1.5rem;
+    margin-top: clamp(2.5rem, 5vw, 3.5rem);
+  }
+  .ftr__group-title {
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-2);
+  }
+  .ftr__links {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ftr__link {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    min-height: 44px;
+    padding: 0.625rem 0;
+    color: var(--c-text-1);
+    font-size: 1rem;
+    text-decoration: none;
+    border-radius: 6px;
+  }
+  .ftr__idx {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: var(--c-text-3);
+    transition: color 0.25s ease;
+  }
+  .ftr__link-text {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)) 0 100% / 0% 1.5px no-repeat;
+    padding-bottom: 3px;
+    transition: background-size 0.35s var(--ftr-ease);
+  }
+  .ftr__link:hover .ftr__link-text { background-size: 100% 1.5px; }
+  .ftr__link:hover .ftr__idx { color: var(--accent); }
+
+  .ftr__link:focus-visible,
+  .ftr__cta:focus-visible,
+  .ftr__top:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 3px;
+  }
+
+  /* ---- Tarjeta de vidrio simulada (degradado + borde degradado, sin backdrop-filter) ---- */
+  .ftr__card {
+    --ftr-glass: color-mix(in srgb, var(--c-text-1) 4%, var(--c-bg));
+    position: relative;
+    display: grid;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 28px;
+    background:
+      radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 55%),
+      radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 60%),
+      linear-gradient(160deg, rgb(var(--ink-rgb) / 0.07), rgb(var(--ink-rgb) / 0.015) 55%) padding-box,
+      linear-gradient(var(--ftr-glass), var(--ftr-glass)) padding-box,
+      linear-gradient(155deg, rgb(var(--ink-rgb) / 0.28), rgb(var(--ink-rgb) / 0.05) 40%, color-mix(in srgb, var(--accent) 40%, transparent)) border-box;
+    box-shadow:
+      inset 0 1px 0 rgb(var(--ink-rgb) / 0.08),
+      0 40px 80px -40px rgb(0 0 0 / 0.8);
+  }
+
+  /* Escenario del mini-pase: trama de puntos y anillos concéntricos que se apagan. */
+  .ftr__stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 13.5rem;
+    padding: 2rem 1.5rem 1.5rem;
+  }
+  .ftr__stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-radial-gradient(circle at 50% 58%, transparent 0 46px, rgb(var(--ink-rgb) / 0.06) 46px 47px),
+      radial-gradient(circle, rgb(var(--ink-rgb) / 0.16) 1px, transparent 1.5px) 0 0 / 14px 14px;
+    -webkit-mask-image: radial-gradient(70% 75% at 50% 58%, #000 25%, transparent 100%);
+    mask-image: radial-gradient(70% 75% at 50% 58%, #000 25%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* Mini-pase (decorativo): marca, sellos y QR, inclinado 4°. */
+  .ftr__pass {
+    --ftr-pc: var(--accent);
+    position: relative;
+    display: grid;
+    gap: 0.875rem;
+    width: min(100%, 15.5rem);
+    padding: 1rem 1rem 0.875rem;
+    border: 1px solid color-mix(in srgb, var(--ftr-pc) 40%, var(--c-border-strong));
+    border-radius: 18px;
+    background:
+      radial-gradient(110% 90% at 100% 0%, color-mix(in srgb, var(--ftr-pc) 34%, transparent), transparent 60%),
+      linear-gradient(160deg, var(--c-surface-3), var(--c-surface));
+    box-shadow:
+      0 30px 50px -18px rgb(0 0 0 / 0.75),
+      0 0 0 1px rgb(0 0 0 / 0.4),
+      inset 0 1px 0 rgb(var(--ink-rgb) / 0.1);
+    transform: rotate(4deg);
+    transition: transform 0.6s var(--ftr-ease);
+  }
+  .ftr__card:hover .ftr__pass { transform: rotate(1.5deg) translateY(-4px); }
+  /* Filete superior del acento, como los pases de "Precios". */
+  .ftr__pass::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 14%;
+    right: 14%;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: linear-gradient(90deg, transparent, var(--ftr-pc) 25%, var(--accent-2) 75%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--ftr-pc) 60%, transparent);
+  }
+  .ftr__pass-top {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .ftr__pass-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--ftr-pc), var(--accent-2));
+  }
+  .ftr__pass-bars {
+    display: grid;
+    gap: 5px;
+  }
+  .ftr__pass-bars > span {
+    height: 6px;
+    border-radius: 3px;
+    background: rgb(var(--ink-rgb) / 0.32);
+  }
+  .ftr__pass-bars > span + span {
+    width: 58%;
+    background: rgb(var(--ink-rgb) / 0.14);
+  }
+  .ftr__pass-pts {
+    width: 30px;
+    height: 16px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-2) 55%, transparent);
+  }
+  .ftr__pass-stamps {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0.625rem 0;
+    border-block: 1.5px dashed color-mix(in srgb, var(--ftr-pc) 30%, var(--c-border));
+  }
+  .ftr__pass-stamps > span {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 1.5px solid rgb(var(--ink-rgb) / 0.16);
+  }
+  .ftr__pass-stamps > span[data-on] {
+    border-color: transparent;
+    background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--ftr-pc) 70%, var(--ftr-cream)), var(--ftr-pc) 70%);
+  }
+  .ftr__pass-foot {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: end;
+    gap: 0.75rem;
+  }
+  .ftr__pass-qr {
+    display: grid;
+    grid-template-columns: repeat(5, 6px);
+    gap: 1.5px;
+    padding: 5px;
+    border-radius: 6px;
+    background: var(--ftr-cream);
+  }
+  .ftr__pass-qr > span { height: 6px; }
+  .ftr__pass-qr > span[data-on] { background: var(--c-bg); border-radius: 1px; }
+  .ftr__pass-bars--foot { padding-bottom: 4px; }
+  .ftr__pass-bars--foot > span:first-child { width: 72%; background: rgb(var(--ink-rgb) / 0.2); }
+  .ftr__pass-bars--foot > span + span { width: 44%; }
+
+  /* Texto de la tarjeta, sobre un panel más claro (contraste ≥ 4,5:1). */
+  .ftr__promo {
+    position: relative;
+    margin: 0 0.625rem 0.625rem;
+    padding: 1.5rem 1.375rem 1.375rem;
+    border: 1px solid rgb(var(--ink-rgb) / 0.08);
+    border-radius: 20px;
+    background: rgb(var(--c-bg-rgb) / 0.72);
+  }
+  .ftr__eyebrow {
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent) 75%, var(--c-text-1));
+  }
+  .ftr__promo-text {
+    margin: 0;
+    font-size: clamp(1.125rem, 1.8vw, 1.3125rem);
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+    text-wrap: pretty;
+  }
+  .ftr__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-height: 48px;
+    margin-top: 1.375rem;
+    padding: 0 1.375rem;
+    border-radius: 14px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.25s ease;
+  }
+  .ftr__cta:hover { box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--accent) 80%, transparent); }
+  .ftr__cta:active { transform: scale(0.98); }
+  .ftr__cta-arrow { transition: transform 0.25s var(--ftr-ease); }
+  .ftr__cta:hover .ftr__cta-arrow { transform: translateX(3px); }
+
+  /* ---- Base: wordmark completo + barra legal, al ancho del contenido (como .ftr__inner) ---- */
+  .ftr__base {
+    width: 100%;
+    max-width: 1120px;
+    margin: clamp(3rem, 6vw, 5rem) auto 0;
+  }
+
+  /* ---- Barra legal ---- */
+  .ftr__legal {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-top: clamp(0.5rem, 1.5vw, 1.25rem);
+    padding-block: 0.75rem 1.25rem;
+    border-top: 1px solid var(--c-border);
+    font-size: 0.8125rem;
+    color: var(--c-text-3);
+  }
+  .ftr__copy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+  }
+  .ftr__sep {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .ftr__top {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    color: var(--c-text-2);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: color 0.2s ease;
+  }
+  .ftr__top:hover { color: var(--c-text-1); }
+  .ftr__top-arrow {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 50%;
+    transition: transform 0.3s var(--ftr-ease), border-color 0.2s ease;
+  }
+  .ftr__top:hover .ftr__top-arrow { transform: translateY(-3px); border-color: var(--c-text-2); }
+
+  /* ---- Wordmark ---- */
+  .ftr__mark {
+    /* cqw = ancho del propio contenedor: el texto ocupa el ancho útil sin desbordar. */
+    container-type: inline-size;
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    user-select: none;
+  }
+
+  /* Fondo del wordmark: sale del contenedor a todo el viewport (el overflow-x:clip del
+     footer recorta el sobrante) y sube un poco por encima de las letras. Es absoluto:
+     no suma altura. Bordes laterales fundidos con una máscara estática. */
+  .ftr__field {
+    position: absolute;
+    z-index: -1;
+    top: -24%;
+    bottom: 0;
+    left: calc(50% - 50vw);
+    right: calc(50% - 50vw);
+    pointer-events: none;
+    background:
+      radial-gradient(42% 70% at 24% 100%, rgb(255 106 61 / 0.15), transparent 70%),
+      radial-gradient(38% 62% at 78% 100%, rgb(232 162 74 / 0.12), transparent 70%),
+      radial-gradient(30% 45% at 52% 100%, rgb(243 227 207 / 0.05), transparent 70%);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  }
+  .ftr__word {
+    --k: 0.3355;
+    margin: 0;
+    font-size: calc(var(--k) * 100cqw);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -0.045em;
+    position: relative;
+    color: var(--ftr-cream);
+    white-space: nowrap;
+    text-align: left;
+    /* Quita el sidebearing izquierdo de la "B" para que la tinta toque el borde del contenedor. */
+    margin-left: -0.055em;
+  }
+  .ftr__ch {
+    display: inline-block;
+    position: relative;
+  }
+  /* "i" = ı sin punto + punto naranja anclado a la línea base y elevado 1ex. */
+  .ftr__ch--i {
+    display: inline-grid;
+    margin-inline: 0.012em;
+  }
+  .ftr__ch--i > .ftr__face { grid-area: 1 / 1; align-self: baseline; }
+  .ftr__face { position: relative; }
+  .ftr__i-base {
+    position: relative;
+    justify-self: center;
+    width: 0;
+    height: 0;
+  }
+  .ftr__i-base::after {
+    content: '';
+    position: absolute;
+    left: -0.075em;
+    bottom: calc(1ex + 0.045em);
+    width: 0.15em;
+    height: 0.15em;
+    border-radius: 50%;
+    background: var(--ftr-orange);
+  }
+
+  /* ---- Glitch (L4o): capas sobre cada letra; en reposo no pintan nada ----
+     Fantasmas melocotón/ámbar/naranja detrás de la letra, sombra carbón y letra
+     intercambiada delante. El script solo escribe translate, opacity y clip-path
+     (resortes por capa en un bucle rAF; sin transition sobre translate). */
+  .ftr__gl {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .ftr__gl::before { content: attr(data-ch); }
+  .ftr__gl--p { color: #ffb38f; }
+  .ftr__gl--a { color: #e8a24a; }
+  .ftr__gl--o { color: var(--ftr-orange); }
+  .ftr__gl--k { color: #100e0c; }
+  .ftr__gl--sw { color: var(--ftr-cream); }
+  /* will-change solo mientras el bucle está activo (L4p). */
+  .ftr[data-ftr-glitch] .ftr__ch { will-change: translate; }
+  .ftr[data-ftr-glitch] .ftr__gl { will-change: translate, opacity, clip-path; }
+
+  /* Reveal (solo si el script lo arma; sin JS o con reduced motion no se oculta). */
+  .ftr[data-ftr-armed] .ftr__ch {
+    opacity: 0;
+    transform: translateY(30%);
+  }
+  .ftr[data-ftr-armed][data-ftr-in] .ftr__ch {
+    opacity: 1;
+    transform: none;
+    transition:
+      transform 0.9s var(--ftr-ease),
+      opacity 0.6s ease;
+    transition-delay: calc(var(--i, 0) * 40ms);
+  }
+
+  /* ---- ≥640: enlaces y tarjeta con más aire; tarjeta horizontal debajo ---- */
+  @media (min-width: 640px) {
+    .ftr__nav { grid-template-columns: repeat(2, minmax(0, 13rem)); gap: 2rem 3rem; }
+    .ftr__card { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr); align-items: stretch; }
+    .ftr__stage { min-height: 15rem; }
+    .ftr__promo {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      margin: 0.625rem;
+      padding: 1.75rem;
+    }
+    .ftr__cta { align-self: flex-start; }
+  }
+
+  /* ---- ≥1024: grid 7/5, tarjeta a la derecha ---- */
+  @media (min-width: 1024px) {
+    .ftr__grid {
+      grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+      column-gap: clamp(3rem, 6vw, 6rem);
+      align-items: start;
+    }
+    .ftr__card { grid-template-columns: minmax(0, 1fr); }
+    .ftr__stage { min-height: 16rem; }
+    .ftr__promo { margin: 0 0.625rem 0.625rem; }
+  }
+
+  @media (min-width: 1280px) {
+    .ftr__inner,
+    .ftr__base { max-width: 1280px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ftr,
+    .ftr *,
+    .ftr *::before,
+    .ftr *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+    .ftr .ftr__ch {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>
