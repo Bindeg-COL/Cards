@@ -1000,22 +1000,30 @@ const legends = ['Escaneas el QR', 'El sello cae en la tarjeta', 'Tu cliente lo 
     padding: clamp(3rem, 6vw, 5rem) var(--sp-6, 1.5rem) clamp(3rem, 6vw, 5rem);
     /* L4m (decisión 008, toque de C): "Pruébalo" es una hoja crema dentro de la
        página carbón. Se redefinen los tokens en su zona para que todo lo de dentro
-       (textos, bordes, controles) se pinte en tinta sobre crema y pase AA. */
-    color-scheme: light;
-    --c-bg: var(--cream-bg);
-    --c-bg-rgb: 241 236 226;
-    --c-surface: var(--cream-surface);
-    --c-text-1: var(--cream-ink);
-    --c-text-2: var(--cream-text-2);
-    --c-text-3: var(--cream-text-3);
-    --ink-rgb: var(--cream-ink-rgb);
-    --c-border: rgb(var(--cream-ink-rgb) / 0.12);
-    --c-border-strong: rgb(var(--cream-ink-rgb) / 0.26);
+       (textos, bordes, controles) se pinte en tinta sobre crema y pase AA.
+       L4q: los valores de la hoja salen de --sheet-* (global.css). En modo claro la
+       hoja se INVIERTE a carbón con texto crema; las 8 paletas de tarjeta, el pase y
+       el QR (#fff) no cambian. */
+    color-scheme: var(--sheet-scheme);
+    --c-bg: var(--sheet-bg);
+    --c-bg-rgb: var(--sheet-bg-rgb);
+    --c-surface: var(--sheet-surface);
+    --c-text-1: var(--sheet-text-1);
+    --c-text-2: var(--sheet-text-2);
+    --c-text-3: var(--sheet-text-3);
+    --ink-rgb: var(--sheet-ink-rgb);
+    --c-border: rgb(var(--sheet-ink-rgb) / 0.12);
+    --c-border-strong: rgb(var(--sheet-ink-rgb) / 0.26);
+    --c-danger: var(--sheet-danger);
+    --c-success: var(--sheet-success);
+    --accent: var(--sheet-accent);
+    --accent-ink: var(--sheet-accent-ink);
+    --accent-deep: var(--sheet-accent-text);
+    --accent-2: var(--sheet-accent-2);
     --c-focus: var(--accent-deep);
-    --c-danger: var(--cream-danger);
-    --c-success: var(--cream-success);
-    --try-panel: var(--cream-raise);
-    --try-shadow-rgb: 60 36 16;
+    --try-panel: var(--sheet-panel);
+    --try-panel-rgb: var(--sheet-panel-rgb);
+    --try-shadow-rgb: var(--sheet-shadow-rgb);
     border-radius: 28px;
     background: var(--c-bg);
     color: var(--c-text-1);
@@ -1822,7 +1830,7 @@ const legends = ['Escaneas el QR', 'El sello cae en la tarjeta', 'Tu cliente lo 
     /* Sobre crema, el borde del campo llega a 3:1 (WCAG 1.4.11). */
     border: 1px solid rgb(var(--ink-rgb) / 0.5);
     border-radius: var(--r-md, 12px);
-    background: rgb(255 255 255 / 0.75);
+    background: var(--sheet-field);
     color: var(--c-text-1);
     font: inherit;
     font-size: 1rem;
@@ -1889,7 +1897,7 @@ const legends = ['Escaneas el QR', 'El sello cae en la tarjeta', 'Tu cliente lo 
     margin: 0 -1.25rem -1.25rem;
     padding: 0.75rem 1.25rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
     border-radius: 0 0 24px 24px;
-    background: linear-gradient(to top, var(--try-panel) 70%, rgb(251 248 242 / 0));
+    background: linear-gradient(to top, var(--try-panel) 70%, rgb(var(--try-panel-rgb) / 0));
   }
   .try-btn {
     display: inline-flex;
@@ -1951,8 +1959,8 @@ const legends = ['Escaneas el QR', 'El sello cae en la tarjeta', 'Tu cliente lo 
   .try[data-js] .try-legend { display: grid; }
   .try-legend__item {
     /* L4m: el mismo naranja que se intensifica de 1 a 3, en tonos que leen sobre crema. */
-    --try-dot: var(--accent-soft);
-    --try-next: var(--accent);
+    --try-dot: var(--sheet-dot-1);
+    --try-next: var(--sheet-dot-2);
     --try-dot-ink: var(--cream-ink);
     position: relative;
     display: grid;
@@ -1964,8 +1972,8 @@ const legends = ['Escaneas el QR', 'El sello cae en la tarjeta', 'Tu cliente lo 
     color: var(--c-text-2);
     transition: color 0.3s ease;
   }
-  .try-legend__item:nth-child(2) { --try-dot: var(--accent); --try-next: var(--accent-deep); }
-  .try-legend__item:nth-child(3) { --try-dot: var(--accent-deep); --try-dot-ink: var(--cream-bg); }
+  .try-legend__item:nth-child(2) { --try-dot: var(--sheet-dot-2); --try-next: var(--sheet-dot-3); }
+  .try-legend__item:nth-child(3) { --try-dot: var(--sheet-dot-3); --try-dot-ink: var(--sheet-dot-ink-3); }
   .try-legend__dot {
     position: relative;
     z-index: 1;

@@ -85,9 +85,9 @@ const qrCells = qrRows.flatMap((row, y) =>
       <svg class="hiw__thread" aria-hidden="true" focusable="false" data-hiw-thread>
         <defs>
           <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0" data-hiw-grad>
-            <stop offset="0" stop-color="var(--aurora-3)" />
-            <stop offset="0.5" stop-color="var(--aurora-2)" data-hiw-mid />
-            <stop offset="1" stop-color="var(--aurora-1)" />
+            <stop offset="0" stop-color="var(--thread-1)" />
+            <stop offset="0.5" stop-color="var(--thread-2)" data-hiw-mid />
+            <stop offset="1" stop-color="var(--thread-3)" />
           </linearGradient>
         </defs>
         <path class="hiw__track" d="" pathLength="1" data-hiw-path />
@@ -563,7 +563,7 @@ const qrCells = qrRows.flatMap((row, y) =>
     font-weight: 600;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .hiw__title {
     margin: 0;
@@ -629,7 +629,7 @@ const qrCells = qrRows.flatMap((row, y) =>
     bottom: 0;
     left: calc(var(--hiw-dot) / 2 - 1px);
     width: 2px;
-    background: linear-gradient(var(--aurora-3), var(--aurora-2), var(--aurora-1));
+    background: linear-gradient(var(--thread-1), var(--thread-2), var(--thread-3));
     opacity: 0.5;
   }
 
@@ -644,6 +644,13 @@ const qrCells = qrRows.flatMap((row, y) =>
     row-gap: 1.25rem;
   }
   .hiw__marker { grid-area: marker; align-self: start; }
+  /* L4q: el paso 3 usa el naranja de relleno; su texto encima y como acento sale de
+     los tokens (en oscuro coinciden con --c-bg y --accent: sin cambio visual). */
+  .hiw__step:nth-child(2) { --hiw-ink: var(--accent-mid-text); }
+  .hiw__step:last-child {
+    --hiw-on: var(--accent-ink);
+    --hiw-ink: var(--accent-text);
+  }
   .hiw__text { grid-area: text; }
   .hiw__vis { grid-area: vis; }
 
@@ -659,7 +666,7 @@ const qrCells = qrRows.flatMap((row, y) =>
     border: 1px solid var(--hiw-accent);
     border-radius: 50%;
     background: var(--hiw-accent);
-    color: var(--c-bg);
+    color: var(--hiw-on, var(--c-bg));
     font: 600 0.8125rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-variant-numeric: tabular-nums;
     cursor: pointer;
@@ -667,8 +674,8 @@ const qrCells = qrRows.flatMap((row, y) =>
   }
   /* L4m: un solo naranja que se intensifica: pasos 1 y 2 en contorno, el 3 relleno. */
   .hiw__step:not(:last-child) .hiw__dot {
-    background: color-mix(in srgb, var(--hiw-accent) 14%, var(--c-bg));
-    color: var(--hiw-accent);
+    background: color-mix(in srgb, var(--hiw-accent) var(--hiw-tint, 14%), var(--c-bg));
+    color: var(--hiw-ink, var(--hiw-accent));
   }
   /* Apagado hasta que llega el trazo (solo con JS). */
   .hiw[data-js] .hiw__dot:not(.is-lit) {
@@ -849,7 +856,7 @@ const qrCells = qrRows.flatMap((row, y) =>
     gap: 0.375rem;
     padding: 0.375rem 0.75rem;
     border-radius: var(--r-full, 999px);
-    background: color-mix(in srgb, var(--hiw-accent) 16%, transparent);
+    background: color-mix(in srgb, var(--hiw-accent) var(--hiw-tint, 16%), transparent);
     font-size: 0.8125rem;
     font-weight: 600;
   }
@@ -1002,10 +1009,10 @@ const qrCells = qrRows.flatMap((row, y) =>
   .hiw-plus {
     padding: 0.125rem 0.5rem;
     border-radius: var(--r-full, 999px);
-    background: color-mix(in srgb, var(--hiw-accent) 16%, transparent);
+    background: color-mix(in srgb, var(--hiw-accent) var(--hiw-tint, 16%), transparent);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.75rem;
-    color: var(--hiw-accent);
+    color: var(--hiw-ink, var(--hiw-accent));
   }
   .hiw-saldo { color: var(--c-text-2); }
   .hiw-saldo .hiw-mono { color: var(--c-text-1); }
@@ -1018,7 +1025,7 @@ const qrCells = qrRows.flatMap((row, y) =>
     padding: 0.5rem 0.75rem;
     border: 1px solid color-mix(in srgb, var(--hiw-accent) 35%, transparent);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--hiw-accent) 10%, transparent);
+    background: color-mix(in srgb, var(--hiw-accent) var(--hiw-tint, 10%), transparent);
     font-size: 0.75rem;
   }
   .hiw-redeem {

@@ -11,6 +11,9 @@
  *   (IntersectionObserver) y la pestaña visible. Sin mix-blend ni filtros.
  * - prefers-reduced-motion: un frame estático. Sin JS: el canvas queda transparente.
  * - Decorativo: aria-hidden y pointer-events:none.
+ * - L4q: los dos extremos del color (--bsq-from / --bsq-to, "r g b") y la atenuación
+ *   (--bsq-dim) salen de global.css según el tema. Se leen en runtime y se releen
+ *   (con redibujo) cuando cambia data-theme en <html> (MutationObserver).
  *
  * @param {'bottom'|'top'|'left'|'right'} direction - Borde más denso (por defecto 'bottom').
  * @param {number} grid - Tamaño de la rejilla. Con gridMode 'rows' (por defecto) es el
@@ -127,11 +130,23 @@ const cfg = JSON.stringify({
     seed: 1581,
   };
   const DIRS: Dir[] = ['bottom', 'top', 'left', 'right'];
-  // Naranja #FF6A3D → ámbar #E8A24A en 4 tonos (agrupados para cambiar fillStyle 4 veces por frame).
-  const TONES = [0, 1 / 3, 2 / 3, 1].map((t) => {
-    const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
-    return `rgb(${mix(255, 232)} ${mix(106, 162)} ${mix(61, 74)})`;
-  });
+  // 4 tonos entre --bsq-from y --bsq-to (agrupados para cambiar fillStyle 4 veces por frame).
+  // Oscuro: naranja #FF6A3D → ámbar #E8A24A. Claro: #EE4A17 → #C97A1A (global.css).
+  const FALLBACK_FROM = [255, 106, 61];
+  const FALLBACK_TO = [232, 162, 74];
+  const readRgb = (css: CSSStyleDeclaration, name: string, fallback: number[]) => {
+    const parts = css.getPropertyValue(name).trim().split(/\s+/).map(Number);
+    return parts.length === 3 && parts.every((v) => Number.isFinite(v) && v >= 0 && v <= 255) ? parts : fallback;
+  };
+  const tonesFor = (el: Element) => {
+    const css = getComputedStyle(el);
+    const a = readRgb(css, '--bsq-from', FALLBACK_FROM);
+    const b = readRgb(css, '--bsq-to', FALLBACK_TO);
+    return [0, 1 / 3, 2 / 3, 1].map((t) => {
+      const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * t);
+      return `rgb(${mix(0)} ${mix(1)} ${mix(2)})`;
+    });
+  };
   const FRAME_MS = 1000 / 30;
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -176,6 +191,7 @@ const cfg = JSON.stringify({
     if (!ctx || !host) return;
     const cfg = parse(canvas.dataset.bsq);
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let tones = tonesFor(canvas);
 
     // Celdas encendidas, en arreglos planos agrupados por tono.
     let xs = new Float32Array(0);
@@ -271,7 +287,7 @@ const cfg = JSON.stringify({
       const gain = cfg.intensity * cfg.opacity;
       let i = 0;
       for (let tone = 0; tone < 4; tone++) {
-        ctx.fillStyle = TONES[tone];
+        ctx.fillStyle = tones[tone];
         const end = toneEnd[tone] ?? 0;
         for (; i < end; i++) {
           const wave = 0.5 + 0.5 * Math.sin(t * k * rate[i] + phase[i]);
@@ -331,6 +347,12 @@ const cfg = JSON.stringify({
       sync();
       still();
     });
+    // L4q: al cambiar de tema se releen los tonos y se redibuja (el bucle, si corre,
+    // ya pinta con ellos en el siguiente frame).
+    new MutationObserver(() => {
+      tones = tonesFor(canvas);
+      if (!raf) still();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   };
 
   document.querySelectorAll<HTMLCanvasElement>('canvas[data-bsq]').forEach(setup);
@@ -343,7 +365,8 @@ const cfg = JSON.stringify({
     display: block;
     width: 100%;
     height: 100%;
-    opacity: var(--bsq-level, 0.42);
+    /* L4q: --bsq-dim atenúa el campo en modo claro (global.css). */
+    opacity: calc(var(--bsq-level, 0.42) * var(--bsq-dim, 1));
     pointer-events: none;
   }
 </style>

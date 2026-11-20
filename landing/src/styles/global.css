@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* L4q (decisión 011): variante `dark:` de Tailwind ligada al tema de la página
+   (data-theme en <html>), no solo a la preferencia del sistema. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /*
  * Tokens de diseño compartidos (L4e, paleta L4m). Una sola fuente para todas las
  * secciones. Los componentes consumen los semánticos (--accent*, --c-*, --ink-rgb).
@@ -74,11 +78,291 @@
   --chart-pos: var(--accent-3);
   --chart-neg: var(--c-danger);
 
+  /* L4q — naranja como TEXTO sobre el fondo de la página (en oscuro, el acento). */
+  --accent-text: var(--accent);
+  --accent-mid-text: var(--accent-mid);
+
+  /*
+   * L4q — Valores por sección que cambian con el tema. Viven aquí (y no en cada
+   * componente) para que el espejo sin JS (@media más abajo) los cubra también.
+   * En oscuro reproducen exactamente los valores de antes.
+   */
+  /* Header: filete del velo */
+  --veil-rule: rgb(var(--ink-rgb) / 0.1);
+  /* Hero: opacidad de las tres manchas de la aurora */
+  --aurora-o1: 0.2;
+  --aurora-o2: 0.16;
+  --aurora-o3: 0.1;
+  /* El problema: resplandor detrás de la palabra */
+  --ps-glow: 0.2;
+  /* Cómo funciona: hilo (inicio -> medio -> final). Las viñetas usan --hiw-tint solo en claro. */
+  --thread-1: var(--aurora-3);
+  --thread-2: var(--aurora-2);
+  --thread-3: var(--aurora-1);
+  /* Pruébalo: hoja crema dentro de la página carbón */
+  --sheet-scheme: light;
+  --sheet-bg: var(--cream-bg);
+  --sheet-bg-rgb: 241 236 226;
+  --sheet-surface: var(--cream-surface);
+  --sheet-panel: var(--cream-raise);
+  --sheet-panel-rgb: 251 248 242;
+  --sheet-text-1: var(--cream-ink);
+  --sheet-text-2: var(--cream-text-2);
+  --sheet-text-3: var(--cream-text-3);
+  --sheet-ink-rgb: var(--cream-ink-rgb);
+  --sheet-danger: var(--cream-danger);
+  --sheet-success: var(--cream-success);
+  --sheet-shadow-rgb: 60 36 16;
+  --sheet-field: rgb(255 255 255 / 0.75);
+  --sheet-accent: var(--accent);
+  --sheet-accent-ink: var(--accent-ink);
+  --sheet-accent-text: var(--accent-deep);
+  --sheet-accent-2: var(--accent-2);
+  --sheet-dot-1: var(--accent-soft);
+  --sheet-dot-2: var(--accent);
+  --sheet-dot-3: var(--accent-deep);
+  --sheet-dot-ink-3: var(--cream-bg);
+  /* Precios: sombra del pase, superficie y brillo del CTA */
+  --prc-shadow: rgb(0 0 0 / 0.55);
+  --prc-pass: var(--c-surface-2);
+  --prc-glow: 80%;
+  /* Footer: wordmark, glitch, campo de cuadritos y sombras */
+  --ftr-word: #f3eee4;
+  --ftr-dot: #ff6a3d;
+  --ftr-gl-p: #ffb38f;
+  --ftr-gl-a: #e8a24a;
+  --ftr-gl-k: #100e0c;
+  --ftr-field:
+    radial-gradient(42% 70% at 24% 100%, rgb(255 106 61 / 0.15), transparent 70%),
+    radial-gradient(38% 62% at 78% 100%, rgb(232 162 74 / 0.12), transparent 70%),
+    radial-gradient(30% 45% at 52% 100%, rgb(243 227 207 / 0.05), transparent 70%);
+  --ftr-card-shadow: 0 40px 80px -40px rgb(0 0 0 / 0.8);
+  --ftr-pass-shadow: 0 30px 50px -18px rgb(0 0 0 / 0.75), 0 0 0 1px rgb(0 0 0 / 0.4);
+  /* Cuadritos del footer (BlinkingSquares los lee en runtime): tonos y atenuación */
+  --bsq-from: 255 106 61;
+  --bsq-to: 232 162 74;
+  --bsq-dim: 1;
+
   /* Espaciado y radios (L4b) */
   --sp-6: 1.5rem;
   --r-md: 12px;
   --r-lg: 16px;
   --r-full: 999px;
+}
+
+/*
+ * L4q — Modo claro "Crema editorial" (decisión 011, diseno.md "Visual — L4q").
+ * Mismos nombres que los tokens oscuros. Contraste sobre --c-bg: texto-1 16.1,
+ * texto-2 8.3, texto-3 5.9, --accent-text 6.0; --accent-ink sobre --accent 4.94.
+ * Regla: texto de acento nunca sobre surface-3.
+ *
+ * El bloque va dos veces y debe mantenerse en espejo:
+ *  1. [data-theme="light"]: lo pone el script del <head> (Base.astro) o el toggle.
+ *  2. @media (prefers-color-scheme: light): sin JS, sigue al sistema.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --c-bg: #f4efe5;
+  --c-bg-rgb: 244 239 229;
+  --c-surface: #fbf8f2;
+  --c-surface-2: #ece5d8;
+  --c-surface-3: #e3daca;
+  --c-text-1: #17130f;
+  --c-text-2: #4a453d;
+  --c-text-3: #625b4f;
+
+  --ink-rgb: 23 19 15;
+  --c-border: rgb(var(--ink-rgb) / 0.12);
+  --c-border-strong: rgb(var(--ink-rgb) / 0.26);
+
+  --accent: #ee4a17;
+  --accent-soft: #9e2c08;
+  --accent-mid: #b8340a; /* no sobre surface-3 */
+  --accent-deep: #a82e08;
+  --accent-ink: #141414;
+  --accent-text: #a82e08;
+  --accent-mid-text: #9e2c08; /* número del paso 2 sobre su tinte (4.95) */
+  --accent-2: #7a4300;
+  --accent-3: #436133;
+  --accent-4: #94391c;
+  --c-focus: #b8340a;
+
+  --aurora-1: #ee4a17;
+  --aurora-2: #e8a24a;
+  --aurora-3: #f0c9a0;
+
+  --c-danger: #a3301a;
+  --c-success: #3e6a2c;
+
+  --veil-rule: rgb(var(--ink-rgb) / 0.08);
+  --aurora-o1: 0.34;
+  --aurora-o2: 0.26;
+  --aurora-o3: 0.2;
+  --ps-glow: 0.22;
+  --thread-1: #e8a24a;
+  --thread-2: #ee4a17;
+  --thread-3: #a82e08;
+  --hiw-tint: 18%;
+
+  /* Pruébalo se invierte: hoja carbón con texto crema (la paleta oscura). */
+  --sheet-scheme: dark;
+  --sheet-bg: #17130f;
+  --sheet-bg-rgb: 23 19 15;
+  --sheet-surface: #0f0c0a;
+  --sheet-panel: #221d17;
+  --sheet-panel-rgb: 34 29 23;
+  --sheet-text-1: #f3eee4;
+  --sheet-text-2: #b9b0a2;
+  --sheet-text-3: #a39a8c;
+  --sheet-ink-rgb: 243 238 228;
+  --sheet-danger: #ff9a85;
+  --sheet-success: #b5d49f;
+  --sheet-shadow-rgb: 0 0 0;
+  --sheet-field: rgb(0 0 0 / 0.28);
+  --sheet-accent: #ff6a3d;
+  --sheet-accent-ink: #100e0c;
+  --sheet-accent-text: #ff8a5e;
+  --sheet-accent-2: #e8a24a;
+  --sheet-dot-1: #ffb38f;
+  --sheet-dot-2: #ff8a5e;
+  --sheet-dot-3: #ff6a3d;
+  --sheet-dot-ink-3: #141414;
+
+  --prc-shadow: rgb(60 36 16 / 0.28);
+  --prc-pass: var(--c-surface);
+  --prc-glow: 45%;
+
+  --ftr-word: #17130f;
+  --ftr-dot: #ee4a17;
+  --ftr-gl-p: #e8a24a;
+  --ftr-gl-a: #c97a1a;
+  --ftr-gl-k: #f4efe5;
+  --ftr-field:
+    radial-gradient(42% 70% at 24% 100%, rgb(238 74 23 / 0.12), transparent 70%),
+    radial-gradient(38% 62% at 78% 100%, rgb(232 162 74 / 0.16), transparent 70%),
+    radial-gradient(30% 45% at 52% 100%, rgb(201 122 26 / 0.06), transparent 70%);
+  --ftr-card-shadow: 0 40px 80px -40px rgb(60 36 16 / 0.34);
+  --ftr-pass-shadow: 0 30px 50px -18px rgb(60 36 16 / 0.34), 0 0 0 1px rgb(60 36 16 / 0.1);
+
+  --bsq-from: 238 74 23;
+  --bsq-to: 201 122 26;
+  --bsq-dim: 0.667; /* 0.42 x 0.667 = ~0.28 de opacidad del campo */
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --c-bg: #f4efe5;
+    --c-bg-rgb: 244 239 229;
+    --c-surface: #fbf8f2;
+    --c-surface-2: #ece5d8;
+    --c-surface-3: #e3daca;
+    --c-text-1: #17130f;
+    --c-text-2: #4a453d;
+    --c-text-3: #625b4f;
+
+    --ink-rgb: 23 19 15;
+    --c-border: rgb(var(--ink-rgb) / 0.12);
+    --c-border-strong: rgb(var(--ink-rgb) / 0.26);
+
+    --accent: #ee4a17;
+    --accent-soft: #9e2c08;
+    --accent-mid: #b8340a; /* no sobre surface-3 */
+    --accent-deep: #a82e08;
+    --accent-ink: #141414;
+    --accent-text: #a82e08;
+    --accent-mid-text: #9e2c08; /* número del paso 2 sobre su tinte (4.95) */
+    --accent-2: #7a4300;
+    --accent-3: #436133;
+    --accent-4: #94391c;
+    --c-focus: #b8340a;
+
+    --aurora-1: #ee4a17;
+    --aurora-2: #e8a24a;
+    --aurora-3: #f0c9a0;
+
+    --c-danger: #a3301a;
+    --c-success: #3e6a2c;
+
+    --veil-rule: rgb(var(--ink-rgb) / 0.08);
+    --aurora-o1: 0.34;
+    --aurora-o2: 0.26;
+    --aurora-o3: 0.2;
+    --ps-glow: 0.22;
+    --thread-1: #e8a24a;
+    --thread-2: #ee4a17;
+    --thread-3: #a82e08;
+    --hiw-tint: 18%;
+
+    /* Pruébalo se invierte: hoja carbón con texto crema (la paleta oscura). */
+    --sheet-scheme: dark;
+    --sheet-bg: #17130f;
+    --sheet-bg-rgb: 23 19 15;
+    --sheet-surface: #0f0c0a;
+    --sheet-panel: #221d17;
+    --sheet-panel-rgb: 34 29 23;
+    --sheet-text-1: #f3eee4;
+    --sheet-text-2: #b9b0a2;
+    --sheet-text-3: #a39a8c;
+    --sheet-ink-rgb: 243 238 228;
+    --sheet-danger: #ff9a85;
+    --sheet-success: #b5d49f;
+    --sheet-shadow-rgb: 0 0 0;
+    --sheet-field: rgb(0 0 0 / 0.28);
+    --sheet-accent: #ff6a3d;
+    --sheet-accent-ink: #100e0c;
+    --sheet-accent-text: #ff8a5e;
+    --sheet-accent-2: #e8a24a;
+    --sheet-dot-1: #ffb38f;
+    --sheet-dot-2: #ff8a5e;
+    --sheet-dot-3: #ff6a3d;
+    --sheet-dot-ink-3: #141414;
+
+    --prc-shadow: rgb(60 36 16 / 0.28);
+    --prc-pass: var(--c-surface);
+    --prc-glow: 45%;
+
+    --ftr-word: #17130f;
+    --ftr-dot: #ee4a17;
+    --ftr-gl-p: #e8a24a;
+    --ftr-gl-a: #c97a1a;
+    --ftr-gl-k: #f4efe5;
+    --ftr-field:
+      radial-gradient(42% 70% at 24% 100%, rgb(238 74 23 / 0.12), transparent 70%),
+      radial-gradient(38% 62% at 78% 100%, rgb(232 162 74 / 0.16), transparent 70%),
+      radial-gradient(30% 45% at 52% 100%, rgb(201 122 26 / 0.06), transparent 70%);
+    --ftr-card-shadow: 0 40px 80px -40px rgb(60 36 16 / 0.34);
+    --ftr-pass-shadow: 0 30px 50px -18px rgb(60 36 16 / 0.34), 0 0 0 1px rgb(60 36 16 / 0.1);
+
+    --bsq-from: 238 74 23;
+    --bsq-to: 201 122 26;
+    --bsq-dim: 0.667; /* 0.42 x 0.667 = ~0.28 de opacidad del campo */
+  }
+}
+
+/* L4q: transición de color al cambiar de tema. La clase la pone el toggle ~250ms;
+   nunca en la carga (sin flash) y nunca con reduced motion. */
+html.theme-anim,
+html.theme-anim *,
+html.theme-anim *::before,
+html.theme-anim *::after {
+  transition:
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease,
+    fill 200ms ease,
+    stroke 200ms ease,
+    box-shadow 200ms ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.theme-anim,
+  html.theme-anim *,
+  html.theme-anim *::before,
+  html.theme-anim *::after {
+    transition: none !important;
+  }
 }
 
 @layer base {

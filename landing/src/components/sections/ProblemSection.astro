@@ -37,7 +37,8 @@ const titleId = `${id}-titulo`;
 const cards = [
   {
     word: 'Otra app',
-    accent: 'var(--accent)',
+    // L4q: naranja como texto (en oscuro = --accent; en claro, el tono oscuro).
+    accent: 'var(--accent-text)',
     problem: 'A tus clientes no les gusta bajar otra app solo para sumar puntos en una compra pequeña.',
     solution: 'Tu cliente guarda la tarjeta en la billetera de su celular y no tiene que instalar nada.',
   },
@@ -78,7 +79,7 @@ const colors = cards.map((card) => card.accent);
     <header class="ps__head">
       <p class="ps__eyebrow">El problema</p>
       <h2 id={titleId} class="ps__title">Para un negocio pequeño, fidelizar clientes suele ser…</h2>
-      <MeltWord class="ps__word" words={words} colors={colors} holdMs={6000} morphMs={1200} />
+      <MeltWord class="ps__word" words={words} colors={colors} holdMs={4800} morphMs={1000} />
     </header>
 
     <ul class="ps__cards" role="list">
@@ -250,7 +251,7 @@ const colors = cards.map((card) => card.accent);
 <style>
   .ps {
     /* Acento de la card activa; lo actualiza el script. */
-    --ps-active: var(--accent);
+    --ps-active: var(--accent-text);
     /* Reposo de MeltWord; el script lo copia de su data-hold. */
     --ps-hold: 1800ms;
     position: relative;
@@ -272,7 +273,7 @@ const colors = cards.map((card) => card.accent);
     border-radius: 50%;
     color: var(--ps-active);
     background: radial-gradient(closest-side, currentColor, transparent);
-    opacity: 0.2;
+    opacity: var(--ps-glow);
     filter: blur(60px);
     pointer-events: none;
     transition: color 0.8s ease;
@@ -289,7 +290,7 @@ const colors = cards.map((card) => card.accent);
     font-weight: 600;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .ps__title {
     max-width: 640px;

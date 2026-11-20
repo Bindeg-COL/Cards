@@ -14,9 +14,45 @@ const { title, description } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- L4q: sin JS, cada meta sigue al sistema; con JS, el script de abajo pone en
+         ambas el color del tema efectivo (también tras usar el toggle). -->
+    <meta name="theme-color" content="#F4EFE5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#100e0c" media="(prefers-color-scheme: dark)" />
+    <!-- L4q (decisión 011): tema antes del primer pintado, sin flash. Va antes de
+         cualquier CSS. Preferencia en localStorage 'bindeg-theme' (light|dark|system);
+         sin preferencia válida = 'system'. data-theme = tema efectivo,
+         data-theme-pref = preferencia. Con 'system' sigue los cambios del sistema. -->
+    <script is:inline>
+      (function () {
+        var root = document.documentElement;
+        var mq = window.matchMedia('(prefers-color-scheme: light)');
+        var pref = 'system';
+        try {
+          var saved = localStorage.getItem('bindeg-theme');
+          if (saved === 'light' || saved === 'dark' || saved === 'system') pref = saved;
+        } catch (e) {
+          /* sin acceso a localStorage: se sigue al sistema */
+        }
+        var apply = function (p) {
+          var theme = p === 'system' ? (mq.matches ? 'light' : 'dark') : p;
+          root.setAttribute('data-theme', theme);
+          root.setAttribute('data-theme-pref', p);
+          var color = theme === 'light' ? '#F4EFE5' : '#100e0c';
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) metas[i].setAttribute('content', color);
+        };
+        apply(pref);
+        // Lo usa el toggle de SiteHeader.
+        window.__bindegTheme = { apply: apply };
+        var onSystem = function () {
+          if (root.getAttribute('data-theme-pref') === 'system') apply('system');
+        };
+        if (mq.addEventListener) mq.addEventListener('change', onSystem);
+        else if (mq.addListener) mq.addListener(onSystem);
+      })();
+    </script>
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#100e0c" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
